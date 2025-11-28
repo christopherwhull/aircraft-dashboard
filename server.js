@@ -198,7 +198,7 @@ function generateHeatmapData() {
 // --- Middleware ---
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
-const accessLogStream = fs.createWriteStream(path.join(__dirname, config.logging.accessLogFile), { flags: 'a' });
+const accessLogStream = fs.createWriteStream(path.join(__dirname, config.server.accessLogFile), { flags: 'a' });
 app.use(morgan(config.logging.format, { stream: accessLogStream }));
 
 // --- API Routes (will be set up in initialize()) ---

@@ -7,8 +7,8 @@ module.exports = {
     // --- Server Configuration ---
     server: {
         port: process.env.PORT || 3002,
-        logFile: process.env.LOG_FILE || './server.log',
-        accessLogFile: process.env.ACCESS_LOG_FILE || './access.log',
+        logFile: process.env.LOG_FILE || 'server.log',
+        accessLogFile: process.env.ACCESS_LOG_FILE || 'access.log',
     },
 
     // --- Data Source Configuration ---
