@@ -1,0 +1,40 @@
+name: Validate KML
+
+on:
+  push:
+    paths:
+      - '**/*.kml'
+      - 'tools/**'
+      - 'wiki/**'
+  pull_request:
+    paths:
+      - '**/*.kml'
+      - 'tools/**'
+      - 'wiki/**'
+
+jobs:
+  validate:
+    name: Validate KML files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Run KML validator on tracked .kml files
+        run: |
+          set -e
+          files=$(git ls-files '*.kml' || true)
+          if [ -z "$files" ]; then
+            echo "No .kml files tracked in the repository. Skipping validation."
+            exit 0
+          fi
+          echo "Validating the following KML files:"; echo "$files"
+          for f in $files; do
+            echo "--- Validating $f ---"
+            python tools/validate_kml.py "$f"
+          done
