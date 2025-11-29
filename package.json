@@ -1,7 +1,7 @@
 {
-  "name": "aircraft-dashboard-new",
+  "name": "aircraft-dashboard-piaware",
   "version": "1.0.1",
-  "description": "A new aircraft tracking dashboard",
+  "description": "Aircraft Dashboard for PiAware - Real-time aircraft tracking and analytics dashboard. Requires PiAware server.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
