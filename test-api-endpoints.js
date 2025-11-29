@@ -65,6 +65,16 @@ async function runTests() {
         assert(res.data.lastProcessing !== undefined, 'Expected lastProcessing in response');
     });
 
+    // Test 2b: Cache status includes type database stats
+    await test('Cache status includes type database stats', async () => {
+        const res = await request('/api/cache-status');
+        assert(res.status === 200, `Expected status 200, got ${res.status}`);
+        assert(res.data.typeDatabase !== undefined, 'Expected typeDatabase in response');
+        const td = res.data.typeDatabase;
+        assert(td.loaded !== undefined, 'Expected typeDatabase.loaded');
+        assert(td.typeCount !== undefined, 'Expected typeDatabase.typeCount');
+    });
+
     // Test 3: Reception range endpoint
     await test('Reception range endpoint returns data', async () => {
         const res = await request('/api/reception-range?hours=24');
@@ -164,6 +174,19 @@ async function runTests() {
             assert(flight.start_time !== undefined, 'Expected start_time field');
         }
     });
+
+    // Test 9b: Flights endpoint returns unique flights (no duplicates between active/completed)
+    await test('Flights endpoint returns unique flights (no duplicate entries)', async () => {
+        const res = await request('/api/flights?gap=5&window=24h');
+        assert(res.status === 200, `Expected status 200, got ${res.status}`);
+        const all = [...(res.data.active || []), ...(res.data.flights || [])];
+        const keys = new Set();
+        for (const f of all) {
+            const key = `${(f.icao||f.hex||'').toLowerCase()}|${(f.callsign||'').toUpperCase()}|${f.start_time||''}|${f.end_time||''}|${(f.registration||'').toUpperCase()}`;
+            assert(!keys.has(key), `Duplicate flight found: ${key}`);
+            keys.add(key);
+        }
+    });
     
     // Test 10: Reception range with different time windows
     await test('Reception range works with various time windows', async () => {
@@ -192,6 +215,42 @@ async function runTests() {
         }
         
         console.log(`   ✓ All ${expectedFields.length} processing timestamps present`);
+    });
+
+    // Test 12: Airline stats include top type and manufacturer
+    await test('Airline stats include top type and manufacturer', async () => {
+        const res = await request('/api/airline-stats?window=24h');
+        assert(res.status === 200, `Expected status 200, got ${res.status}`);
+        assert(res.data.hourly && res.data.hourly.byAirline, 'Expected hourly.byAirline in response');
+        const airlines = res.data.hourly.byAirline;
+        const airlinesKeys = Object.keys(airlines || {});
+        if (airlinesKeys.length > 0) {
+            const first = airlines[airlinesKeys[0]];
+            assert(first.topType !== undefined, 'Expected topType in airline stats');
+            assert(first.topManufacturer !== undefined, 'Expected topManufacturer in airline stats');
+        }
+    });
+
+    // Test 13: Flights include manufacturer and bodyType
+    await test('Flights include manufacturer and bodyType', async () => {
+        const res = await request('/api/flights?gap=5&window=24h');
+        assert(res.status === 200, `Expected status 200, got ${res.status}`);
+        const flight = (res.data.flights || res.data.active || [])[0];
+        if (flight) {
+            assert(flight.manufacturer !== undefined, 'Expected manufacturer in flight');
+            assert(flight.bodyType !== undefined, 'Expected bodyType in flight');
+        }
+    });
+
+    // Test 14: Squawk transitions include manufacturer
+    await test('Squawk transitions include manufacturer', async () => {
+        const now = Date.now();
+        const start = now - (24 * 60 * 60 * 1000);
+        const res = await request(`/api/squawk-transitions?startTime=${start}&endTime=${now}`);
+        assert(res.status === 200, `Expected status 200, got ${res.status}`);
+        if (res.data.transitions && res.data.transitions.length > 0) {
+            assert(res.data.transitions[0].manufacturer !== undefined, 'Expected manufacturer in transition');
+        }
     });
     
     // Test 12: Heatmap returns grid with proper structure
