@@ -28,6 +28,19 @@ except ImportError:
     CONFIG_READER_AVAILABLE = False
     print("Warning: config_reader not available, using command-line defaults")
 
+# Ensure UTF-8 console encoding on Windows to avoid UnicodeEncodeError
+try:
+    if os.name == 'nt':
+        try:
+            # Python 3.7+: reconfigure stdout/stderr to utf-8
+            sys.stdout.reconfigure(encoding='utf-8')
+            sys.stderr.reconfigure(encoding='utf-8')
+        except Exception:
+            # Fallback: set PYTHONIOENCODING for subprocesses (best-effort)
+            os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
+except Exception:
+    pass
+
 import re
 import glob
 import subprocess
@@ -354,14 +367,17 @@ def update_aircraft_tracking(current_aircraft: List[dict]) -> None:
                 if aircraft_type == 'N/A' and 't' in hist:
                     aircraft_type = hist['t']
             
-            # If not in live data or history, try the S3 cache
-            if registration == 'N/A' or aircraft_type == 'N/A':
-                cached_data = get_icao_cache_from_s3(hex_code)
-                if cached_data:
-                    if registration == 'N/A':
-                        registration = cached_data.get('registration', 'N/A')
-                    if aircraft_type == 'N/A':
-                        aircraft_type = cached_data.get('type', 'N/A')
+            # If not in live data or history, try the S3 ICAO cache.
+            # Prefer cached values when the live value is missing or 'N/A'.
+            cached_data = get_icao_cache_from_s3(hex_code)
+            if cached_data:
+                # Prefer cached registration if live registration is missing
+                if registration in (None, 'N/A', ''):
+                    registration = cached_data.get('registration', registration)
+
+                # Prefer cached aircraft type if live type is missing
+                if aircraft_type in (None, 'N/A', ''):
+                    aircraft_type = cached_data.get('type', aircraft_type)
             
             # If not in live data, history, or cache, lookup from static database
             if registration == 'N/A' or aircraft_type == 'N/A':
