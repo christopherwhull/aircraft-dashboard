@@ -2,6 +2,42 @@
 
 All notable changes to the Aircraft Dashboard project will be documented in this file.
 
+## [1.0.2] - 2025-11-28
+
+### Added
+- **Cross-Platform Server Scripts**: Added `restart-server.sh` for Linux/Mac and improved `restart-server.ps1` for Windows
+- **Linux Production Setup**: Created `aircraft-dashboard.service` systemd unit file with security hardening
+- **Comprehensive Linux Documentation**: Added `LINUX_SETUP.md` with complete installation and deployment guide
+- **Docker Support**: Full Docker and docker-compose examples in LINUX_SETUP.md
+- **MinIO Documentation**: Added `MINIO_SETUP.md` with complete installation for all platforms
+- **Automatic Bucket Creation**: Node server now auto-creates S3 buckets on startup (matching aircraft_tracker.py)
+- **npm Run Scripts**: Added `npm run restart:windows` and `npm run restart:unix` for easy server restart
+
+### Changed
+- **README.md**: Updated with platform-specific installation guidance and MinIO quick start
+- **restart-server.ps1**: Now uses dynamic project directory instead of hardcoded path
+- **Cross-Platform Ready**: Both Node server and aircraft_tracker.py are fully cross-platform compatible
+- **Bucket Management**: Both server and tracker verify and create required S3 buckets on startup
+
+### Technical Details
+- Server bucket creation: `ensureBucketsExist()` checks/creates `aircraft-data` and `aircraft-data-new`
+- Uses AWS SDK `HeadBucketCommand` and `CreateBucketCommand`
+- Server exits with error if bucket creation fails (fail-fast approach)
+- Aircraft tracker creates tracker-specific buckets: `output-kmls`, `flighturls`, `piaware-reception-data`, `icao-hex-cache`
+- Platform detection via `platform.system()` in Python, PowerShell and Bash for Node
+
+### Documentation
+- `CROSSPLATFORM_SUMMARY.md`: Overview of cross-platform implementation
+- `AIRCRAFT_TRACKER.md`: Comprehensive Python tracker documentation
+- `LINUX_SETUP.md`: Complete Linux/Mac setup with systemd and Docker
+- `MINIO_SETUP.md`: MinIO installation for Windows, Linux, macOS (standalone and Docker)
+
+### Infrastructure
+- Windows: Systemd service concept adapted as Windows Scheduled Task
+- Linux: Full systemd integration with resource limits and logging
+- macOS: Homebrew installation and LaunchAgent auto-start
+- Docker: Complete docker-compose configuration for full stack
+
 ## [1.0.1] - 2025-11-28
 
 ### Added

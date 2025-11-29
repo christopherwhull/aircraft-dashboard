@@ -203,6 +203,13 @@ aircraft-data/ (read bucket - historical data)
 
 ## Version History
 
+### v1.0.2 (2025-11-28)
+- **Cross-Platform**: Fully compatible with Windows, Linux, and macOS
+- **Auto-Bucket Creation**: S3 buckets automatically created on startup
+- **Production Ready**: Systemd service for Linux, startup scripts for all platforms
+- **Complete Documentation**: Setup guides for all platforms and installation methods
+- **Docker Support**: Full Docker/docker-compose examples included
+
 ### v1.0.1 (2025-11-28)
 - Added aircraft type display in Flights and Airlines tabs
 - Enhanced airline statistics with "Now" indicator for active flights
