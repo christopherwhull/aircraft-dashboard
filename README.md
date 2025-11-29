@@ -201,6 +201,21 @@ aircraft-data/ (read bucket - historical data)
     └── piaware_aircraft_log_*.json    # Historical position records
 ```
 
+## runtime/
+
+- `runtime/` is used for temporary files, minute log files and runtime state by the server and tracker.
+- Files written here include:
+  - `runtime/server.log` — Node server log (default)
+  - `runtime/access.log` — HTTP access log (default)
+  - `runtime/dashboard-state.json` — server state file
+  - `runtime/piaware_aircraft_log_YYYYMMDD_HHMM.json` — per-minute NDJSON files produced/consumed by the tracker
+- The directory is created at service start. The repo `.gitignore` excludes generated runtime files so they won't be committed.
+
+If you prefer a different location, set the corresponding environment variables or edit `config.js`:
+
+- `LOG_FILE`, `ACCESS_LOG_FILE`, and `STATE_FILE` environment variables control the file paths.
+
+
 ## Version History
 
 ### v1.0.2 (2025-11-28)
