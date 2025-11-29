@@ -40,3 +40,16 @@
 - `config.js` — `reception.enableKML`, `buckets.outputKmls` (or similarly named bucket entries) and S3 configuration entries.
 
 If you want, I can: (1) add a short example showing a minimal KML file example, (2) add a small script to validate generated KML files, or (3) run a short verification by starting the tracker and checking an output KML in your environment — tell me which you prefer.
+
+**Minimal KML Example**
+- A minimal example KML is included in the repository at `wiki/example_kml.kml`. It demonstrates a receiver placemark, an aircraft placemark with altitude in meters, and a simple style.
+- You can open that file in Google Earth or use the validator script (below) to check the file.
+
+**Validator Script**
+- A small validator script `scripts/validate_kml.py` is provided. It parses a KML file, checks basic structure (root KML element, Document, Placemark), and validates coordinate formats (longitude,latitude,altitude). Run it against any `.kml` file to perform a quick sanity check.
+
+Example usage:
+
+```bash
+python scripts/validate_kml.py wiki/example_kml.kml
+```
