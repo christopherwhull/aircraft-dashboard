@@ -5,7 +5,7 @@ const express = require('express');
 const socketIo = require('socket.io');
 const axios = require('axios');
 const morgan = require('morgan');
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, HeadBucketCommand, CreateBucketCommand } = require('@aws-sdk/client-s3');
 
 const config = require('./config');
 const { getAirlineDatabase, getAircraftTypesDatabase } = require('./lib/databases');
@@ -1358,9 +1358,63 @@ const fetchData = async () => {
 };
 
 
+// --- S3 Bucket Management ---
+async function ensureBucketsExist() {
+    /**
+     * Ensure all required S3 buckets exist, creating them if necessary.
+     * This runs on server startup to prevent upload failures later.
+     */
+    const requiredBuckets = [
+        { name: BUCKET_NAME, purpose: 'Historical read data' },
+        { name: WRITE_BUCKET_NAME, purpose: 'Current write data' }
+    ];
+    
+    logger.info('Checking S3 buckets...');
+    
+    for (const bucket of requiredBuckets) {
+        try {
+            // Try to head the bucket to check if it exists
+            const headCommand = new HeadBucketCommand({ Bucket: bucket.name });
+            await s3.send(headCommand);
+            logger.info(`✓ Bucket exists: ${bucket.name} (${bucket.purpose})`);
+        } catch (error) {
+            const errorCode = error.$metadata?.httpStatusCode;
+            
+            if (errorCode === 404) {
+                // Bucket doesn't exist, create it
+                try {
+                    const createCommand = new CreateBucketCommand({ Bucket: bucket.name });
+                    await s3.send(createCommand);
+                    logger.info(`✓ Created bucket: ${bucket.name} (${bucket.purpose})`);
+                } catch (createError) {
+                    logger.error(`✗ Error creating bucket ${bucket.name}: ${createError.message}`);
+                    throw createError;
+                }
+            } else if (errorCode === 403) {
+                logger.error(`✗ Permission denied accessing bucket ${bucket.name}. Check S3 credentials.`);
+                throw error;
+            } else {
+                logger.error(`✗ Error checking bucket ${bucket.name}: ${error.message}`);
+                throw error;
+            }
+        }
+    }
+    
+    logger.info('All S3 buckets verified and ready');
+}
+
 // --- Initialization ---
 async function initialize() {
     await loadState();
+    
+    // Ensure S3 buckets exist before any operations
+    try {
+        await ensureBucketsExist();
+    } catch (error) {
+        logger.error('Failed to verify/create S3 buckets. Server cannot start.');
+        process.exit(1);
+    }
+    
     try {
         const receiverUrl = PIAWARE_URL.replace('/data/aircraft.json', '/data/receiver.json');
         const response = await axios.get(receiverUrl, { timeout: 5000 });

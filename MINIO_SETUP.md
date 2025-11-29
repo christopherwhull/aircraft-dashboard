@@ -355,20 +355,23 @@ Open your browser to: `http://localhost:9001`
 
 ### Create Required Buckets
 
+The Aircraft Dashboard and Python tracker will automatically create the required buckets on startup if they don't exist. However, you can also create them manually:
+
+**Via MinIO Console:**
 1. Login to MinIO console
 2. Click "Create bucket"
-3. Create these buckets:
+3. Create these buckets (or let the applications create them):
 
-| Bucket Name | Purpose |
-|------------|---------|
-| `aircraft-data` | Historical position data |
-| `aircraft-data-new` | Current/live position data |
-| `output-kmls` | KML files for Google Earth |
-| `flighturls` | FlightAware URLs |
-| `piaware-reception-data` | Reception records |
-| `icao-hex-cache` | Aircraft type database |
+| Bucket Name | Purpose | Auto-Created By |
+|------------|---------|-----------------|
+| `aircraft-data` | Historical position data | Node Server |
+| `aircraft-data-new` | Current/live position data | Node Server |
+| `output-kmls` | KML files for Google Earth | Aircraft Tracker |
+| `flighturls` | FlightAware URLs | Aircraft Tracker |
+| `piaware-reception-data` | Reception records | Aircraft Tracker |
+| `icao-hex-cache` | Aircraft type database | Aircraft Tracker |
 
-Or use the MinIO CLI:
+**Via MinIO CLI (Manual Creation):**
 
 ```bash
 # Set alias (after installing mc)
@@ -382,6 +385,14 @@ mc mb myminio/flighturls
 mc mb myminio/piaware-reception-data
 mc mb myminio/icao-hex-cache
 ```
+
+**Auto-Creation Process:**
+- **Node Server**: On startup, checks and creates `aircraft-data` and `aircraft-data-new` buckets
+  - Fails if unable to create (exits with error)
+  - Ensures data persistence is available
+- **Aircraft Tracker**: On startup, checks and creates all tracker-specific buckets
+  - Creates on first use if they don't exist
+  - Handles errors gracefully with colored output
 
 ### Configure Retention Policies
 

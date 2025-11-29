@@ -104,7 +104,7 @@ MinIO is required for data persistence. Follow [MINIO_SETUP.md](MINIO_SETUP.md) 
 - **Quick Start**: Docker installation (recommended)
 - **Platform-Specific**: Windows, Linux, macOS standalone installations
 - **Production**: Systemd service setup for Linux
-- **Configuration**: Bucket creation and integration with dashboard
+- **Configuration**: Bucket creation (or let the apps auto-create them)
 
 **Quick Docker Start:**
 ```bash
@@ -116,6 +116,8 @@ docker run -d -p 9000:9000 -p 9001:9001 \
 ```
 
 Access console at: `http://localhost:9001`
+
+**Note:** Buckets are automatically created by the Node server and aircraft tracker on startup, so you may not need to manually create them.
 
 ## Usage
 
