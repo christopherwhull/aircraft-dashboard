@@ -2431,8 +2431,9 @@ Benefits:
     args = parser.parse_args()
     
     piaware_url = f"http://{args.server}/data/aircraft.json"
-    output_filename = args.output
-    output_format = args.format
+    # Only override defaults if explicit args were provided
+    output_filename = args.output if args.output is not None else output_filename
+    output_format = args.format if args.format is not None else output_format
     heatmap_cell_size = args.heatmap_cell_size
     s3_bucket_name = args.s3_bucket
     s3_kml_bucket_name = args.s3_kml_bucket
