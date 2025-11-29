@@ -227,6 +227,20 @@ In addition to the OpenSky aircraft database, the project includes a curated air
 - **model**: Full model description, e.g., "Boeing 737-800"
 - **bodyType**: e.g., Narrow Body, Wide Body, Regional Jet, Turboprop, Helicopter, Business Jet
 
+### ICAO Aircraft Type Codes
+
+The Types DB uses ICAO Aircraft Type Codes to map common aircraft models to metadata. ICAO codes are standardized alphanumeric identifiers (typically 3–4 characters) used to identify aircraft models. Example codes:
+
+- `B738` → Boeing 737-800
+- `A320` → Airbus A320
+- `C172` → Cessna 172
+
+These codes are commonly present in OpenSky and other ADS‑B data feeds as the `typecode` field. When present, the server normalizes them (uppercase) and uses the types DB to enrich flight and aircraft records with manufacturer, model, and body type. If a type code is missing the server may fall back to the OpenSky `model` text or leave enriched fields null.
+
+Special values such as `ZZZZ` or `PARA` may appear when the aircraft type is unknown or the payload is a parachute or balloon—these won't map cleanly to the curated DB.
+
+To add or extend mappings, edit `build_aircraft_types_db.js` and re-run the build and upload steps (see How-to rebuild the types DB section).
+
 ### Build the Types DB
 Run the Node.js helper to build the types database from a curated mapping file and upload to S3 (optional):
 ```bash
