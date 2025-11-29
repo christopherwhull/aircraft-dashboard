@@ -1,6 +1,36 @@
-# Aircraft Dashboard for PiAware
+# Aircraft Dashboard — Real-time Flight Intelligence for PiAware
 
-A real-time aircraft tracking and analytics dashboard that connects to a PiAware server to monitor ADS-B aircraft data.
+Turn raw ADS‑B feeds from a PiAware receiver into actionable, real-time flight intelligence. Aircraft Dashboard provides live tracking, fleet and airline analytics, historical playback, and reception analysis—on-premise or in the cloud—making it ideal for hobbyists, operators, small airports, and engineers who need reliable, low-latency situational awareness and flexible analytics.
+
+Why it matters:
+- Real-time situational awareness: See live aircraft positions and telemetry with minimal latency.
+- Deep analytics: Track flights, squawk transitions, and aggregate per-airline statistics.
+- Secure & private: Run fully on-premise with MinIO/S3 for optional archival and controlled data retention.
+- Extensible & open source: Integrate with PiAware and customize the data pipeline to meet your needs.
+
+---
+
+> Getting started (2 minutes)
+>
+> 1) Clone the repo and install dependencies
+>
+> ```bash
+> git clone https://github.com/christopherwhull/aircraft-dashboard.git
+> cd aircraft-dashboard
+> npm install
+> ```
+>
+> 2) Configure a PiAware endpoint in `config.js` or env var `PIAWARE_URL`
+>
+> 3) Start the server
+>
+> ```bash
+> npm start
+> ```
+>
+> You’ll have a working local dashboard at http://localhost:3002 — see the Cache and Live tabs for data.
+
+---
 
 ## Requirements
 
@@ -15,6 +45,7 @@ A real-time aircraft tracking and analytics dashboard that connects to a PiAware
 - **Position History** - 7-day rolling cache with 24-hour in-memory history
 - **Flight Statistics** - Track completed and active flights
 - **Airline Analytics** - Statistics by airline with drill-down capabilities
+- **Aircraft Types & Metadata** - Enriched aircraft data showing Manufacturer and Body Type across Live, Flights, Positions and Squawk views
 - **Reception Analysis** - Visualize reception range by bearing and altitude
 - **Squawk Transitions** - Monitor squawk code changes
 - **Heatmap Visualization** - Geographic density of aircraft positions
@@ -233,6 +264,11 @@ If you prefer a different location, set the corresponding environment variables 
 - Fixed type field persistence to S3
 
 ### v1.0.0 (2025-11-27)
+### v1.0.3 (2025-11-28)
+- **Type Database & Metadata**: Added aircraft types database with Typecode → Manufacturer/Model/BodyType mapping. Types DB (123 entries) built and uploaded to S3.
+- **UI Enhancements**: Live, Flights, Positions and Squawk tabs now show Manufacturer and Body Type; Flights saved to S3 include Manufacturer, Body Type, and Model.
+- **API Enhancements**: `/api/cache-status` reports `typeDatabase` summary; `/api/flights`, `/api/squawk-transitions`, and `/api/position-timeseries-live` contain `manufacturer`/`bodyType` data where applicable.
+
 - Initial release
 - Live tracking, position caching, S3 storage
 - Multiple visualizations and analytics tabs
