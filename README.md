@@ -239,6 +239,7 @@ Christopher Hull
 - [AIRCRAFT_TRACKER.md](AIRCRAFT_TRACKER.md) - Python tracker script documentation
 - [CROSSPLATFORM_SUMMARY.md](CROSSPLATFORM_SUMMARY.md) - Cross-platform implementation details
 - [FUNCTIONS_DOCUMENTATION.md](FUNCTIONS_DOCUMENTATION.md) - API and function reference
+- [Project Wiki](./wiki/Home.md) - Detailed multi-page documentation and guides
 
 ## Troubleshooting
 
