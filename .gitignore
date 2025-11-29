@@ -9,6 +9,7 @@ node_modules/
 !test-all.ps1
 *.py
 !config_reader.py
+!aircraft_tracker.py
 scripts/
 public/
 lib/*.s
