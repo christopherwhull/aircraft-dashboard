@@ -1,11 +1,14 @@
 {
   "name": "aircraft-dashboard-piaware",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Aircraft Dashboard — Turn ADS-B data from a PiAware receiver into real-time flight intelligence and analytics for operations, monitoring, and research.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
     "restart:windows": "powershell -ExecutionPolicy Bypass -File restart-server.ps1",
     "restart:unix": "bash restart-server.sh"
   },
@@ -16,6 +19,11 @@
     "body-parser": "^2.2.0",
     "express": "^4.17.1",
     "morgan": "^1.10.0",
+    "sharp": "^0.34.5",
     "socket.io": "^4.0.1"
+  },
+  "devDependencies": {
+    "jest": "^30.2.0",
+    "supertest": "^7.1.4"
   }
 }
