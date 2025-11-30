@@ -2,6 +2,16 @@
 
 All notable changes to the Aircraft Dashboard project will be documented in this file.
 
+## [1.0.4] - 2025-11-30
+
+### Fixed
+- **Airline Flights Header**: Added time window information to drilldown headers (e.g., "Flights for ABC - Airline Name (Last 24 Hours)")
+- **Manufacturer Logo Display**: Separated manufacturer name and logo into distinct table columns in airline flights drilldown
+- **Table Column Structure**: Fixed missing manufacturer logo column causing display concatenation issues
+
+### Changed
+- **Airline Flights Table**: Improved column organization with separate Manufacturer and Manufacturer Logo columns
+
 ## [1.1.0] - 2025-11-30
 
 ### Added
