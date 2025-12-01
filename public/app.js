@@ -1009,6 +1009,7 @@ async function loadAirlineStats(hoursBack = null) {
                     aircraft: stats.aircraft || 0,
                     lastSeen: stats.lastSeen || 0
                     , topType: stats.topType || null,
+                    manufacturers: stats.manufacturers || {},
                     topManufacturer: stats.topManufacturer || null,
                     topManufacturerLogo: stats.topManufacturerLogo || null
                 });
@@ -1057,7 +1058,16 @@ async function loadAirlineStats(hoursBack = null) {
                 row.appendChild(countCell);
                 row.appendChild(aircraftCell);
                 row.appendChild(lastSeenCell);
-                const topManuCell = document.createElement('td'); topManuCell.textContent = airline.topManufacturer || 'N/A'; row.appendChild(topManuCell);
+                const topManuCell = document.createElement('td');
+                // Display all manufacturers with their counts
+                const manufacturers = airline.manufacturers || {};
+                const manufacturerList = Object.entries(manufacturers)
+                    .sort(([,a], [,b]) => b - a) // Sort by count descending
+                    .map(([name, count]) => `${name} (${count})`)
+                    .join(', ');
+                topManuCell.textContent = manufacturerList || 'N/A';
+                topManuCell.title = manufacturerList; // Tooltip for full list
+                row.appendChild(topManuCell);
                 const topManuLogoCell = document.createElement('td');
                 topManuLogoCell.className = 'logo-cell';
                 if (airline.topManufacturerLogo) {
