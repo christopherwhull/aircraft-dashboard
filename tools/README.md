@@ -40,35 +40,45 @@ This directory contains all the utility scripts and tools for the Aircraft Dashb
 - `upload-types.js` - Upload aircraft types to S3
 
 ### Logo Management
-- `check_airline_stocks.js` - Check airlines with stock tickers
-- `create-logo-media-pack.js` - Download all logos and create ZIP media pack
-- `find_airlines_without_logos.js` - Find airlines missing logos
 - `process-airlines.js` - Process airline data (includes logo processing)
 
 ### Testing & Validation
 - `check-latest-data.js` - Check latest data availability
 - `check_tracker_output.js` - Validate tracker output
 - `count-s3-records.js` - Count S3 records
-- `test-all.ps1` - Run all tests (PowerShell)
+- `test_all.py` - Run all tests (Python)
 - `test-api-endpoints.js` - Test API endpoints
-- `test-endpoints.ps1` - Test endpoints (PowerShell)
+- `test_endpoints.py` - Test endpoints (Python)
 - `test_aircraft_api.js` - Test aircraft API
 - `test_aircraft_lookup.js` - Test aircraft lookup
 - `test_squawk_api.js` - Test squawk API
 - `test_workflow.py` - Complete testing workflow
-- `run-tests.ps1` - Run tests (PowerShell)
+- `run-tests.ps1` - Run tests (deprecated; use `run_tests.py`)
 - `run_tests.py` - Run tests (Python)
 - `validate_kml.py` - Validate KML data
 - `verify_backend_data.js` - Verify backend data integrity
 
 ### Server Management
-- `restart-server.ps1` - Restart server (PowerShell)
 - `restart-server.sh` - Restart server (Bash)
-- `restart_server.bat` - Restart server (Batch)
-- `restart_server.ps1` - Restart server (PowerShell)
 - `start_server.py` - Start server script
 
 ### Investigation & Debugging
+
+## All Tests Kickoff
+
+To run all test suites (Jest unit tests, Python integration tests, and platform-specific tests) use the cross-platform wrapper:
+
+```bash
+# Run all tests (Jest, Python runner, PS/batch tests) via Node wrapper
+npm run test:all
+```
+
+This wrapper is implemented as `tools/test-all.js` and invokes the existing tests in sequence:
+- `npm test` (Jest unit tests)
+- `python tools/run_tests.py` (integration tests; will use `python3` or `python` if available)
+- Python (`tools/test_all.py`) on all platforms or `tools/run-tests.sh` on Unix if present
+
+It returns an exit code of `0` if all test groups pass, otherwise non-zero and prints a summary.
 - `find_last_1200_squawk.js` - Find last squawk 1200
 - `find_last_transition.js` - Find last squawk transition
 - `investigate_last_transition.js` - Investigate transitions
@@ -85,14 +95,81 @@ node tools/check_airline_stocks.js
 # Python tools
 python tools/aircraft_tracker.py
 
-# PowerShell scripts
-.\tools\test-all.ps1
+# Python tools
+python tools/test_all.py
 ```
+
+## Restart Workflow (AI Agent)
+
+This project includes scripts and utilities to help an AI agent or automation safely restart the Node.js server when code is updated. Follow the steps below.
+
+1. Check the running server status and compare with local commit:
+
+```pwsh
+# Show the running server commit & uptime
+node tools/check_server_restart.js --server http://localhost:3002
+```
+
+2. Force an automatic restart if the server commit differs from local (safe mode):
+
+```pwsh
+# Auto-restart the server if local commit differs from running server
+npm run restart:auto
+```
+
+3. For direct restarts using the Node runtime, start the server using a dedicated script that avoids opening an interactive terminal:
+
+```pwsh
+# Start Node server in a background window (Windows)
+npm run restart:node
+
+# Use headless option (no visible terminal if supported)
+npm run restart:headless
+```
+
+4. PM2-managed server (recommended for production):
+
+```bash
+# Start server with pm2 (install pm2 first: `npm i -g pm2`)
+npm run start:pm2
+# Restart server via pm2
+npm run restart:pm2
+```
+
+Notes:
+- The `restart:auto` script runs `tools/check_and_restart_server.js` which checks server status and restarts it only when the commit SHA differs from the running server. It waits for the server to return healthy status before exiting.
+- Use `ENFORCE_GIT_CLEAN=true` if you want to fail CI when local working tree is dirty.
+- The scripts are intentionally conservative: they prefer to kill/restart the server gracefully and verify `/api/health` before proceeding.
+
+### Secure remote restart via POST /api/restart
+
+You can call a secure HTTP endpoint to trigger a server restart. Set the server's environment variable `RESTART_API_TOKEN` and then use the token to authorize the request.
+
+Example (curl):
+
+```bash
+# With Bearer token
+curl -X POST http://localhost:3002/api/restart -H "Authorization: Bearer $RESTART_API_TOKEN"
+
+# With X-Restart-Token header
+curl -X POST http://localhost:3002/api/restart -H "X-Restart-Token: $RESTART_API_TOKEN"
+
+# Or JSON body
+curl -X POST http://localhost:3002/api/restart -H "Content-Type: application/json" -d '{"token": "'$RESTART_API_TOKEN'" }'
+```
+
+CI example (GitHub Actions step):
+
+```yaml
+- name: Trigger remote restart (if needed)
+	run: |
+		curl -X POST -H "Authorization: Bearer ${{ secrets.RESTART_API_TOKEN }}" http://staging.example.com/api/restart
+```
+
 
 ## Dependencies
 
 - Node.js (for .js files)
 - Python 3 (for .py files)
-- PowerShell (for .ps1 files)
 - AWS CLI/S3 access (for upload/download scripts)
 - Appropriate permissions for file system and network access

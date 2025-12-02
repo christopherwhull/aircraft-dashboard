@@ -37,6 +37,7 @@ def get_config():
         's3_access_key': s3.get('credentials', {}).get('accessKeyId', 'minioadmin'),
         's3_secret_key': s3.get('credentials', {}).get('secretAccessKey', 'minioadmin123'),
         's3_bucket': buckets.get('readBucket', 'aircraft-data'),
+        's3_write_bucket': buckets.get('writeBucket', 'aircraft-data'),
         's3_prefix': buckets.get('s3Prefix', ''),
         's3_kml_bucket': os.environ.get('S3_KML_BUCKET', 'output-kmls'),
         's3_flightaware_bucket': os.environ.get('S3_FLIGHTAWARE_BUCKET', 'flighturls'),

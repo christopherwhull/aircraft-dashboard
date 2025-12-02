@@ -121,9 +121,9 @@ All graphs are now rendering properly:
 
 ## How to Run Tests
 
-```powershell
+```bash
 cd c:\Users\chris\aircraft-dashboard-new
-.\test-all.ps1
+python tools/test_all.py
 ```
 
 **Expected Output:**

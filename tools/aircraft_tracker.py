@@ -79,6 +79,8 @@ receiver_lat: float = 0.0
 receiver_lon: float = 0.0
 receiver_version: str = "unknown"
 history_cache: Dict[str, dict] = {}  # Cached history data
+last_history_refresh_time: float = 0.0  # Last time the history cache was refreshed
+last_history_refresh_print_time: float = 0.0  # Last time refresh status was printed
 max_slant_range_record: Optional[dict] = None  # All-time longest slant range
 sector_altitude_records: Dict[tuple, dict] = {}  # Record for each sector+altitude zone combination
 # --- Output File Configuration ---
@@ -102,6 +104,7 @@ flightaware_urls_buffer: List[str] = []  # Buffer for FlightAware URLs to upload
 aircraft_type_cache_age_days: int = 30  # Days before refreshing type database cache
 s3_upload_count: int = 0  # Number of S3 uploads
 last_uploaded_file: str = ""  # Last uploaded S3 file key
+history_cache_refresh_counter: int = 0  # Counter for history cache refresh (every 15 seconds)
 
 # Real-time position tracking (for current run only)
 positions_last_minute: List[float] = []  # Timestamps of positions in last minute
@@ -440,6 +443,16 @@ def update_aircraft_tracking(current_aircraft: List[dict]) -> None:
                 if aircraft_type == 'N/A' and 't' in db_info:
                     aircraft_type = db_info['t']
             
+            # If the live registration is missing but the callsign contains an N-number (common
+            # for US general aviation), use the callsign as the registration. This occurs when
+            # the PiAware feed populates the callsign with the tail number but leaves the r
+            # field empty.
+            if (registration in (None, 'N/A', '')) and flight and isinstance(flight, str):
+                fup = flight.upper()
+                # FAA N-number patterns: N + 1-5 digits optionally followed by 0-2 letters
+                if re.match(r'^N\d{1,5}[A-Z]{0,2}$', fup):
+                    registration = fup
+
             # After all lookups, if we have a definitive registration or type, cache it to S3
             if registration != 'N/A' or aircraft_type != 'N/A':
                 set_icao_cache_to_s3(hex_code, registration, aircraft_type)
@@ -505,6 +518,16 @@ def update_aircraft_tracking(current_aircraft: List[dict]) -> None:
             old_squawk = aircraft_tracking[hex_code].get('squawk', 'N/A')
             
             aircraft_tracking[hex_code]['registration'] = aircraft.get('r', aircraft_tracking[hex_code].get('registration', 'N/A'))
+            # If registration is still missing but we have a callsign that looks like an N-number,
+            # use the callsign as the registration value so it's displayed on the tracker.
+            current_reg = aircraft_tracking[hex_code].get('registration', 'N/A')
+            if current_reg in (None, 'N/A', ''):
+                # Prefer new incoming callsign if present, otherwise use stored flight
+                new_flight = aircraft.get('flight') or aircraft_tracking[hex_code].get('flight')
+                if new_flight and isinstance(new_flight, str):
+                    fup = new_flight.upper()
+                    if re.match(r'^N\d{1,5}[A-Z]{0,2}$', fup):
+                        aircraft_tracking[hex_code]['registration'] = fup
             aircraft_tracking[hex_code]['type'] = aircraft.get('t', aircraft_tracking[hex_code].get('type', 'N/A'))
             aircraft_tracking[hex_code]['squawk'] = aircraft.get('squawk', old_squawk)
             
@@ -2377,7 +2400,7 @@ def main():
     global position_reports_24h, running_position_count, heatmap_cell_size, last_s3_upload_time, last_flightaware_upload_time, last_minute_upload_time
     global tracker_start_time
     global s3_bucket_name, s3_kml_bucket_name, s3_flightaware_bucket_name, s3_reception_bucket_name, s3_icao_cache_bucket_name
-    global s3_upload_count, last_uploaded_file
+    global s3_upload_count, last_uploaded_file, history_cache_refresh_counter, last_history_refresh_time
     s3_upload_enabled = False # Initialize to False to prevent UnboundLocalError
 
     # Create an on-disk dated backup of this script before runtime execution
@@ -2453,8 +2476,8 @@ Benefits:
             default_endpoint = config.get('s3Endpoint', 'http://localhost:9000')
             default_access = config.get('s3AccessKeyId', 'minioadmin')
             default_secret = config.get('s3SecretAccessKey', 'minioadmin123')
-            # Use readBucket from config.js for default S3 bucket
-            default_bucket = config.get('readBucket', 'aircraft-data')
+            # Use readBucket from config.js - this is where the tracker uploads raw data
+            default_bucket = config.get('s3_bucket', 'aircraft-data')
         except Exception as e:
             print(f"Warning: Could not read config.js: {e}")
             default_endpoint = 'http://localhost:9000'
@@ -2485,6 +2508,8 @@ Benefits:
                         help='S3 bucket for ICAO hex code cache (default: icao-hex-cache)')
     parser.add_argument('--s3-history-hours', type=int, default=24,
                         help='How many hours of S3 history to scan for reception records on startup (default: 24)')
+    parser.add_argument('--history-refresh-interval', type=int, default=15,
+                        help='Seconds between refreshing PiAware history cache (default: 15)')
     parser.add_argument('--test-run', action='store_true',
                         help='Run for a few iterations and exit (for testing purposes)')
     parser.add_argument('--read-only', action='store_true',
@@ -2623,6 +2648,8 @@ Benefits:
     # Load history to get callsigns and squawk codes
     print("Loading history data...")
     history_cache = load_history_data()
+    # Track when the history cache was last refreshed so we can refresh at runtime
+    last_history_refresh_time = time.time()
     print(f"Loaded history for {len(history_cache)} aircraft")
     
     # Load existing reception records
@@ -2676,6 +2703,33 @@ Benefits:
     try:
         while True:
             iteration += 1
+            
+            # Refresh history cache periodically (by interval configured by CLI).
+            try:
+                history_refresh_interval = args.history_refresh_interval if hasattr(args, 'history_refresh_interval') else 15
+            except Exception:
+                history_refresh_interval = 15
+
+            now_ts = time.time()
+            if now_ts - last_history_refresh_time >= history_refresh_interval:
+                try:
+                    # Replace the cache to ensure we don't keep stale items
+                    new_history_cache = load_history_data()
+                    if new_history_cache is not None:
+                        history_cache = new_history_cache
+                        # Update last refresh timestamp
+                        last_history_refresh_time = now_ts
+                        # Print refresh status occasionally (every 10 minutes)
+                        try:
+                            if now_ts - last_history_refresh_print_time >= 600:
+                                last_history_refresh_print_time = now_ts
+                                print(f"\033[90mHistory cache refreshed: {len(history_cache)} aircraft cached\033[0m")
+                        except Exception:
+                            # Ensure we still print if the print timestamp is not available
+                            last_history_refresh_print_time = now_ts
+                            print(f"\033[90mHistory cache refreshed: {len(history_cache)} aircraft cached\033[0m")
+                except Exception as e:
+                    print(f"\033[91mError refreshing history cache: {e}\033[0m")
 
             if args.test_run and iteration > 5:  # Run for 5 iterations and exit if --test-run is enabled
                 print("\n\033[93mTest run complete. Exiting.\033[0m")

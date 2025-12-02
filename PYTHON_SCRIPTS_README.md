@@ -177,8 +177,7 @@ All scripts use `http://localhost:3002` as the default server. To change:
 
 | Operation | PowerShell | Python |
 |-----------|-----------|--------|
-| Run tests | `./run-tests.ps1 -Runs 5` | `python run_tests.py -r 5` |
-| Start server | `./restart-server.ps1` | `python start_server.py` |
+
 | Full workflow | Manual steps | `python test_workflow.py` |
 | Diagnostics | Manual commands | `python dashboard_utils.py` |
 | Cross-platform | Windows only | Windows, macOS, Linux |

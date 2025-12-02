@@ -1,7 +1,11 @@
 #!/usr/bin/env pwsh
 
-# Aircraft Dashboard Comprehensive Unit Test Suite
-# Tests all core functionality and data validation
+# Deprecated: This PowerShell test script has been replaced by the cross-platform
+# Python script `tools/test_all.py`. The Node wrapper `tools/test-all.js` now
+# invokes the Python test runner for cross-platform compatibility.
+
+Write-Host "This PowerShell script has been deprecated; use 'python tools/test_all.py' instead." -ForegroundColor Yellow
+exit 0
 
 $baseUrl = "http://localhost:3002"
 $testsPassed = 0

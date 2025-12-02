@@ -1,0 +1,38 @@
+name: Restart Test Server on Push
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  restart-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install dependencies
+        run: npm ci
+      - name: Start test server (background)
+        run: |
+          nohup node server.js &
+          echo $! > server.pid
+      - name: Wait for server to become healthy
+        run: |
+          for i in {1..30}; do
+            curl -sS http://localhost:3002/api/health && break || sleep 1
+          done
+      - name: Verify server status and restart if needed
+        run: node tools/check_and_restart_server.js --server http://localhost:3002 --auto-restart
+      - name: Run tests
+        run: npm test --silent
+      - name: Clean up
+        if: always()
+        run: |
+          if [ -f server.pid ]; then kill $(cat server.pid) || true; fi
