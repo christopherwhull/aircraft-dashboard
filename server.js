@@ -22,6 +22,11 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
+// NOTE: Restart workflow details — This server supports a secure /api/restart endpoint
+// which can be triggered by CI or other automation using a token set in the RESTART_API_TOKEN
+// environment variable. Restart scripts are located in /tools/. If you update node code,
+// call the endpoint (or run `npm run restart:node`/`npm run restart:auto`) to apply changes.
+
 // --- Load Configuration ---
 const PORT = config.server.port;
 const PIAWARE_URL = config.dataSource.piAwareUrl;

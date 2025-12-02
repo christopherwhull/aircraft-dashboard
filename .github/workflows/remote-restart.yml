@@ -1,0 +1,22 @@
+name: Remote Restart Server on Push
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  remote-restart:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger remote server restart
+        env:
+          RESTART_API_TOKEN: ${{ secrets.RESTART_API_TOKEN }}
+          RESTART_HOST: ${{ secrets.RESTART_HOST }}
+        run: |
+          if [ -z "$RESTART_API_TOKEN" ] || [ -z "$RESTART_HOST" ]; then
+            echo "RESTART_API_TOKEN or RESTART_HOST not set; skipping remote restart."; exit 1;
+          fi
+          echo "Triggering remote restart on $RESTART_HOST"
+          curl -sS -X POST "$RESTART_HOST/api/restart" -H "Authorization: Bearer $RESTART_API_TOKEN" -w "%{http_code}\n"

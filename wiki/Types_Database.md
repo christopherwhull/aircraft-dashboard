@@ -136,3 +136,107 @@ Contributing & extending the DB:
 Limitations & Notes:
 - Not all aircraft types are included (the curated DB contains the most common types); aviation isn't perfectly standardized across sources — registration/airline/callsign data can sometimes be more reliable for model inference.
 - For general aviation or regional/micro builds, model text fields may differ between sources — prefer type codes where available.
+
+## Aircraft Types Reference
+
+This section provides a comprehensive reference of all aircraft types found in the S3 aircraft database, including detailed descriptions, aircraft counts, and sample registrations.
+
+### Database Overview
+- **Total Aircraft Types**: Hundreds of types
+- **Total Aircraft**: 236,752+ entries
+- **Primary Registration Systems**: N-registrations (US FAA), G-registrations (UK CAA), and international registrations
+- **Call Signs**: Not stored in static database (dynamic flight identifiers)
+
+### Most Common Aircraft Types
+
+**C172 (19,479 aircraft)**: Cessna - Cessna 172 Skyhawk (Single Engine Piston) [General Aviation] - 1 engines
+- 400b02: G-ROKT
+- 400b49: G-FLOW
+- 400c1f: G-BGHJ
+
+**P28A (12,696 aircraft)**: Piper - Piper PA-28 Cherokee (Single Engine Piston) [General Aviation] - 1 engines
+- 400a45: G-HRYZ
+- 400a62: G-BHTA
+- 400a9d: G-JANT
+
+**C182 (11,193 aircraft)**: Cessna - Cessna 182 Skylane (Single Engine Piston) [General Aviation] - 1 engines
+- 400a73: G-VIPA
+- 400ad6: G-ATCX
+- 400bb9: G-ORAY
+
+**C150 (7,630 aircraft)**: Cessna - Cessna 150 (Single Engine Piston) [General Aviation] - 1 engines
+- 400acb: G-AZID
+- 48467f: PH-BWR
+- 484730: PH-VRW
+
+**ULAC (6,765 aircraft)**: Ultra Light Aircraft - Various ultralight models
+- 40605d: G-HTML
+- 4061c0: G-DALI
+- 4061fa: G-SBDB
+
+**GLID (5,684 aircraft)**: Glider - Various glider models
+- 406b04: G-CLME
+- 406d47: G-CLON
+- 48438d: PH992
+
+**BALL (5,444 aircraft)**: Balloon - Various balloon models
+- 4066f8: G-HCPD
+- 48446c: PH-KON
+- 484512: PH-RTF
+
+**BE35 (4,555 aircraft)**: Beechcraft - Beechcraft Bonanza (Single Engine Piston) [General Aviation] - 1 engines
+- 400c37: G-ATSR
+- 400cc9: G-REST
+
+**M20P (4,525 aircraft)**: Mooney - Mooney M20 (Single Engine Piston) [General Aviation] - 1 engines
+- 400b70: G-OJAC
+- 400b8f: G-BJHB
+- 400c29: G-OBAL
+
+**PA18 (3,631 aircraft)**: Piper - Piper PA-18 Super Cub (Single Engine Piston) [General Aviation] - 1 engines
+- 4843ba: PH-ZCT
+- 4844c0: PH-VCY
+- 484528: PH-TOP
+
+### Registration Patterns by Country
+
+**N-Registrations (US FAA)**: 231,761 aircraft
+- Primary US civil aviation registration system
+- Format: N + 1-5 alphanumeric characters (e.g., N12345, N12AB)
+
+**G-Registrations (UK CAA)**: 2,542 aircraft
+- Primary UK civil aviation registration system
+- Format: G + 1-5 alphanumeric characters (e.g., G-ABCD, G123AB)
+
+**Other International Registrations**: 2,449 aircraft
+- Various country-specific formats (e.g., PH-xxxx for Netherlands, D-xxxx for Germany)
+
+### Military and Special Aircraft
+
+Military aircraft are generally not included in civilian ADS-B databases, but some types appear with N/A registrations:
+
+**C130 (3 aircraft)**: Lockheed - Lockheed C-130 Hercules (Military Transport) [Military] - 4 engines
+- No registration data available (typical for military aircraft)
+
+**F15 (4 aircraft)**: McDonnell Douglas - McDonnell Douglas F-15 Eagle (Fighter) [Military] - 2 engines
+- No registration data available (typical for military aircraft)
+
+### Rare and Specialized Types
+
+The database includes hundreds of specialized aircraft types, from experimental aircraft to vintage models:
+
+**Types with 1-3 aircraft each** include rare models like:
+- RJ70: Avro RJ70 (Regional Jet)
+- A748: Hawker Siddeley HS 748 (Turboprop)
+- DH90: de Havilland Dragon Rapide (Biplane)
+- And many others...
+
+### Call Sign Information
+
+**Important Note**: Call signs are not stored in the static aircraft database. Call signs are dynamic flight identifiers assigned during active flights, such as:
+- SWA1234 (Southwest Airlines)
+- DAL568 (Delta Airlines)
+- BAW123 (British Airways)
+- UAL890 (United Airlines)
+
+Call signs are retrieved from live flight data and follow airline-specific formatting conventions.

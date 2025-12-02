@@ -2,6 +2,20 @@
 
 All notable changes to the Aircraft Dashboard project will be documented in this file.
 
+## [2.0.0] - 2025-12-02
+
+### Added
+- **S3 Gap Analysis**: `tools/test_s3_structure.py` now detects gaps > 1 hour with clear UTC reporting and newest/oldest file summaries across both buckets
+- **AI Helper Documentation**: Added `docs/AI_HELPER.md` and wiki drafts to streamline collaboration with GitHub Copilot (GPT-5)
+
+### Changed
+- **PiAware Status Endpoint**: `/api/piaware-status` now reads from `/data/aircraft.json` and returns receiver position alongside aircraft counts
+- **Test Stability**: Python test runners updated with server-uptime gating for squawk-related checks (waits ~3 minutes after startup)
+
+### Fixed
+- **node-fetch Compatibility**: Resolved CommonJS import issue by pinning `node-fetch@2`
+- **Zero-Aircraft Bug**: Fixed aircraft count incorrectly reading HTML root instead of JSON endpoint
+
 ## [1.2.0] - 2025-12-01
 
 ### Added

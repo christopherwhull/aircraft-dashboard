@@ -63,6 +63,46 @@ Why it matters:
 - **Heatmap Visualization** - Geographic density of aircraft positions
 - **S3 Data Persistence** - Automatic archival of historical data
 
+## AI Assistant
+
+This repo is AI-friendly. Use GitHub Copilot (GPT-5) in VS Code to help with coding, tests, and release tasks.
+
+- Start with a clear request, include file paths and expected outcomes
+- Prefer small, reviewable changes; ask for a plan on multi-step work
+- The AI can run tests and S3 diagnostics and will report results
+
+See `docs/AI_HELPER.md` for collaboration tips, commands, and release steps.
+
+## Code Update Workflow
+
+When updating the server with new code, follow these steps to ensure a smooth transition:
+
+1. **Pull the latest code:**
+   ```bash
+   git pull
+   ```
+2. **Install any new dependencies:**
+   ```bash
+   npm install
+   ```
+3. **Run the test suite to ensure everything is working as expected:**
+   ```bash
+   npm run test:all
+   ```
+4. **Restart the server:**
+   - **For local development:**
+     ```bash
+     npm run restart:node
+     ```
+   - **For production (using PM2):**
+     ```bash
+     npm run restart:pm2
+     ```
+   - **On Unix-like systems (if not using PM2):**
+     ```bash
+     bash restart-server.sh
+     ```
+
 ## Installation
 
 ### Quick Start (All Platforms)
@@ -97,7 +137,7 @@ http://localhost:3002
 ### Platform-Specific Setup
 
 **Windows:**
-- Use `restart-server.ps1` script for easy restart
+- Use `restart-server.sh` script for easy restart
 - Run: `npm run restart:windows`
 - See embedded restart instructions in the script
 
@@ -113,7 +153,12 @@ All configuration is centralized in `config.js`. Both Node.js server and Python 
 
 ### Quick Configuration
 
-Edit `config.js` to customize:
+Use the interactive config helper (recommended):
+```powershell
+python tools/config_helper.py
+```
+
+Or edit `config.js` directly to customize:
 
 - **Data Source**: PiAware server URL
 - **S3 Storage**: MinIO/S3 endpoint and credentials
@@ -265,9 +310,17 @@ node logo-tools/logo-manager.js report
 
 ### Storage
 
-Logos are stored in S3 buckets:
-- `airline-logos/` - Airline logos
-- `manufacturer-logos/` - Aircraft manufacturer logos
+Logos are stored in the read bucket in S3 (defaults shown, configurable via `config.js`):
+- `aircraft-data/logos/` — Airline and manufacturer logos (e.g., `logos/AAL.png`, `logos/CESSNA.png`)
+- `aircraft-data/manufacturer-logos/` — Optional prefix (currently unused in this setup)
+
+API access paths:
+- `GET /api/v1logos/:code` — Serves `logos/:code.(png|svg)` from S3
+- `GET /api/v2logos/:code` — Alternate handler (same storage); some DB entries reference this path
+
+Examples:
+- Airline: `/api/v1logos/AAL` → `logos/AAL.png`
+- Manufacturer: `/api/v1logos/CESSNA` → `logos/CESSNA.png`
 
 All logos are publicly accessible and automatically linked in the airline database.
 

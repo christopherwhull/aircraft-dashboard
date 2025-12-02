@@ -24,3 +24,7 @@ The Live tab automatically updates via WebSocket connections. Data refreshes in 
 
 - Direct connection to PiAware dump1090 data
 - Real-time WebSocket updates
+
+## N-number Handling
+
+If the PiAware `r` registration field is missing, but the aircraft's callsign matches a US FAA N-number (e.g., `N12345`, `N66TN`), the tracker will use the callsign as the registration to ensure the tail number is shown on the Live tab and in logs.

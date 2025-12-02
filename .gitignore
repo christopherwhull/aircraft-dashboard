@@ -8,8 +8,11 @@ node_modules/
 !tools/aircraft_types.json
 *.log
 *.ps1
-!test-all.ps1
+!tools/test_all.py
 *.py
+!tools/test_all.py
+!tools/test_endpoints.py
+!tools/run_tests.py
 !config_reader.py
 !aircraft_tracker.py
 !tools/aircraft_heatmap.py

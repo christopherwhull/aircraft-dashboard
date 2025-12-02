@@ -228,8 +228,7 @@ Start here based on your need:
 
 | Task | Old (PowerShell) | New (Python) |
 |------|---|---|
-| Run tests | `.\run-tests.ps1 -Runs 5` | `python run_tests.py -r 5` |
-| Start server | `.\restart-server.ps1` | `python start_server.py` |
+
 | Check health | Manual checks | `python dashboard_utils.py` |
 | Full workflow | Multiple steps | `python test_workflow.py` |
 | OS Support | Windows only | Win/Mac/Linux ✅ |
