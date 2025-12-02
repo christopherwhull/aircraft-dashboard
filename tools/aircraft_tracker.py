@@ -745,11 +745,13 @@ def load_reception_records() -> None:
     # Try loading from S3 first if enabled
     if s3_upload_enabled and s3_client:
         try:
-            print(f"Attempting to load reception records from S3 bucket: {s3_reception_bucket_name}")
-            obj = s3_client.get_object(Bucket=s3_reception_bucket_name, Key=reception_record_file)
+            # S3 keys should use forward slashes, even on Windows
+            s3_key = reception_record_file.replace('\\', '/')
+            print(f"Attempting to load reception records from S3 bucket: {s3_reception_bucket_name}, key: {s3_key}")
+            obj = s3_client.get_object(Bucket=s3_reception_bucket_name, Key=s3_key)
             content = obj['Body'].read().decode('utf-8')
             lines = content.splitlines()
-            print(f"Successfully loaded {reception_record_file} from S3.")
+            print(f"Successfully loaded {len(lines)} lines from S3.")
         except ClientError as e:
             if e.response['Error']['Code'] == 'NoSuchKey':
                 print(f"Reception record file not found in S3, will start fresh.")
@@ -2576,44 +2578,6 @@ Benefits:
     
     # Calculate initial total log size
     total_log_size = calculate_total_log_size()
-    
-    # Initialize S3 client if enabled
-    if args.enable_s3:
-        print("Checking MinIO server status...")
-        if check_and_start_minio():
-            print("Initializing S3 client...")
-            if initialize_s3_client(args.s3_endpoint, args.s3_access_key, args.s3_secret_key):
-                print(f"S3 uploads enabled:")
-                print(f"  - JSON bucket: {args.s3_bucket}")
-                print(f"  - KML bucket: {args.s3_kml_bucket}")
-                print(f"  - FlightAware URLs bucket: {args.s3_flightaware_bucket}")
-                
-                # Ensure the reception records bucket exists
-                print("\nEnsuring S3 reception records bucket exists...")
-                if not ensure_s3_bucket_exists(s3_reception_bucket_name):
-                    print(f"\033[91mError: Reception records S3 bucket '{s3_reception_bucket_name}' could not be created or accessed.\033[0m")
-                    s3_upload_enabled = False # Disable S3 if this critical bucket is unavailable
-                
-                # Check aircraft type cache age
-                print("\nChecking aircraft type database cache...")
-                if check_aircraft_type_cache_age(args.s3_bucket):
-                    print("Cache is older than 30 days or missing, updating...")
-                    update_aircraft_type_cache(args.s3_bucket)
-                else:
-                    print("Cache is current (less than 30 days old)")
-                
-                # Load and reconcile current hour data from S3
-                print("\nReconciling current hour data with S3...")
-                load_current_hour_from_s3(args.s3_bucket)
-                
-                # Populate reception records from S3 history
-                populate_reception_records_from_s3(args.s3_history_hours)
-            else:
-                print("S3 uploads disabled due to initialization failure")
-        else:
-            print("S3 uploads disabled - MinIO server could not be started")
-    else:
-        print("S3 uploads disabled (use --enable-s3 to enable)")
     
     # Count position reports from past 24 hours (skip during test runs)
     if args.test_run:
