@@ -1017,10 +1017,11 @@
                                     } catch (e) {}
                                 }
                                 const latlngs = densifyTrackPoints(pts, 0.1);
-                                const poly = L.polyline(latlngs, { color: color, weight: 2, opacity: 0.65, pane: 'livePane', interactive: false });
-                                // Start/end markers for context
-                                const start = L.circleMarker(latlngs[0], { radius: 3, fillColor: '#00ff00', color: '#006600', weight: 1, fillOpacity: 0.9, pane: 'livePane' });
-                                const end = L.circleMarker(latlngs[latlngs.length - 1], { radius: 3, fillColor: '#ff0000', color: '#660000', weight: 1, fillOpacity: 0.9, pane: 'livePane' });
+                                // Draw historical (long) tracks on the persistent pane so they sit above overlay tiles
+                                const poly = L.polyline(latlngs, { color: color, weight: 3, opacity: 0.95, pane: 'persistentPane', interactive: false });
+                                // Start/end markers for context (placed on persistentPane)
+                                const start = L.circleMarker(latlngs[0], { radius: 4, fillColor: '#00ff00', color: '#006600', weight: 1, fillOpacity: 0.95, pane: 'persistentPane' });
+                                const end = L.circleMarker(latlngs[latlngs.length - 1], { radius: 4, fillColor: '#ff0000', color: '#660000', weight: 1, fillOpacity: 0.95, pane: 'persistentPane' });
                                 const lg = L.layerGroup([poly, start, end]);
                                 longTracksLayer.addLayer(lg);
                             }
