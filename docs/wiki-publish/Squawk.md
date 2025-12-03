@@ -2,4 +2,4 @@
 
 Overview: Squawk code transition analysis and categorized lists.
 
-![Squawk tab screenshot](../screenshots/index-squawk.png)
+![Squawk tab screenshot](https://raw.githubusercontent.com/christopherwhull/aircraft-dashboard/main/docs/screenshots/index-squawk.png)

@@ -6,35 +6,35 @@ Screenshots captured from `index.html` (open `http://localhost:3002/index.html`)
 
 - **Live**
 
-![Live tab](screenshots/index-live.png)
+![Live tab](https://raw.githubusercontent.com/christopherwhull/aircraft-dashboard/main/docs/screenshots/index-live.png)
 
 - **Airlines**
 
-![Airlines tab](screenshots/index-airlines.png)
+![Airlines tab](https://raw.githubusercontent.com/christopherwhull/aircraft-dashboard/main/docs/screenshots/index-airlines.png)
 
 - **Flights**
 
-![Flights tab](screenshots/index-flights.png)
+![Flights tab](https://raw.githubusercontent.com/christopherwhull/aircraft-dashboard/main/docs/screenshots/index-flights.png)
 
 - **Positions**
 
-![Positions tab](screenshots/index-positions.png)
+![Positions tab](https://raw.githubusercontent.com/christopherwhull/aircraft-dashboard/main/docs/screenshots/index-positions.png)
 
 - **Squawk**
 
-![Squawk tab](screenshots/index-squawk.png)
+![Squawk tab](https://raw.githubusercontent.com/christopherwhull/aircraft-dashboard/main/docs/screenshots/index-squawk.png)
 
 - **Heatmap** (links to the Leaflet viewer)
 
-![Heatmap tab](screenshots/index-heatmap.png)
+![Heatmap tab](https://raw.githubusercontent.com/christopherwhull/aircraft-dashboard/main/docs/screenshots/index-heatmap.png)
 
 - **Reception**
 
-![Reception tab](screenshots/index-reception.png)
+![Reception tab](https://raw.githubusercontent.com/christopherwhull/aircraft-dashboard/main/docs/screenshots/index-reception.png)
 
 - **Cache Status**
 
-![Cache tab](screenshots/index-cache.png)
+![Cache tab](https://raw.githubusercontent.com/christopherwhull/aircraft-dashboard/main/docs/screenshots/index-cache.png)
 
 ---
 

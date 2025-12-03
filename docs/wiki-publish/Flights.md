@@ -2,4 +2,4 @@
 
 Overview: Flights listing and historical flight data.
 
-![Flights tab screenshot](../screenshots/index-flights.png)
+![Flights tab screenshot](https://raw.githubusercontent.com/christopherwhull/aircraft-dashboard/main/docs/screenshots/index-flights.png)
