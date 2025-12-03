@@ -10,6 +10,28 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
+        :root {
+            --bg: #0f0f10;
+            --panel-bg: #1e1e1e;
+            --card-bg: #1b1b1b;
+            --text: #e0e0e0;
+            --muted: #bbb;
+            --accent: #0066cc;
+            --highlight: #00ff99;
+        }
+
+        /* Dark mode adjustments are applied by adding `.dark-mode` on the body */
+        body.dark-mode {
+            background: var(--bg);
+            color: var(--text);
+        }
+        body.dark-mode .header, body.dark-mode .controls, body.dark-mode .info-panel {
+            background: transparent;
+        }
+        body.dark-mode .legend { background: rgba(20,20,20,0.95); color: var(--text); }
+        body.dark-mode .info-card { background: var(--card-bg); color: var(--text); border-left-color: var(--accent); }
+        body.dark-mode select, body.dark-mode input { background: #141414; color: var(--text); border-color: #2b2b2b }
+        body.dark-mode .error { background: #b71c1c }
         * {
             margin: 0;
             padding: 0;
@@ -259,6 +281,12 @@
             </div>
 
             <div class="control-group">
+                <label for="dark-mode">
+                    <input type="checkbox" id="dark-mode"> Dark Mode
+                </label>
+            </div>
+
+            <div class="control-group">
                 <button id="clear-persistent-tracks" onclick="clearAllPersistentTracks()">Clear Tracks</button>
             </div>
 
@@ -468,6 +496,7 @@
                 , showLive: document.getElementById('show-live').checked
                 , trackWindowMinutes: document.getElementById('track-window-input') ? document.getElementById('track-window-input').value : '1'
                 , persistOnClick: document.getElementById('persist-on-click') ? document.getElementById('persist-on-click').checked : false
+                , darkMode: document.getElementById('dark-mode') ? document.getElementById('dark-mode').checked : false
             };
             setCookie('leafletHeatmapSettings', JSON.stringify(settings));
         }
@@ -491,6 +520,10 @@
                     }
                     if (settings.persistOnClick !== undefined && document.getElementById('persist-on-click')) {
                         document.getElementById('persist-on-click').checked = settings.persistOnClick;
+                    }
+                    if (settings.darkMode !== undefined && document.getElementById('dark-mode')) {
+                        document.getElementById('dark-mode').checked = settings.darkMode;
+                        try { if (settings.darkMode) document.body.classList.add('dark-mode'); else document.body.classList.remove('dark-mode'); } catch (e) {}
                     }
                 } catch (e) {
                     console.error('!!! CRITICAL ERROR loading settings:', e);
@@ -562,6 +595,18 @@
                         stopLongTracksPolling();
                     }
                 } catch (e) { console.warn('Long tracks toggle failed', e); }
+            });
+        }
+
+        // Dark mode toggle
+        const darkModeCheckbox = document.getElementById('dark-mode');
+        if (darkModeCheckbox) {
+            darkModeCheckbox.addEventListener('change', () => {
+                try {
+                    if (darkModeCheckbox.checked) document.body.classList.add('dark-mode');
+                    else document.body.classList.remove('dark-mode');
+                    saveSettings();
+                } catch (e) { console.warn('Dark mode toggle failed', e); }
             });
         }
 
