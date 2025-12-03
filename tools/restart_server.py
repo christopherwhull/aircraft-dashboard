@@ -195,6 +195,11 @@ def main(argv: List[str]):
                     print('Server healthy')
                 else:
                     print('Server did not become healthy in time')
+            # Always print/write test reminder after a restart
+            try:
+                write_test_reminder()
+            except Exception:
+                pass
             return 0
         else:
             print('API restart failed; falling back to local restarts')
@@ -209,6 +214,12 @@ def main(argv: List[str]):
         print('Waiting for server health...')
         ok = wait_for_health(args.server_url, timeout=60)
         print('Health OK' if ok else 'Health check timed out')
+
+    # Always print/write test reminder after local restarts
+    try:
+        write_test_reminder()
+    except Exception:
+        pass
 
     return 0
 
