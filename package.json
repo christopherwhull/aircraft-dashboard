@@ -21,8 +21,7 @@
     "start:pm2": "npx pm2 start server.js --name aircraft-dashboard || npx pm2 start server.js --name aircraft-dashboard --update-env",
     "restart:pm2": "npx pm2 restart aircraft-dashboard",
     "restart:headless": "powershell -ExecutionPolicy Bypass -File tools/restart-server-headless.ps1",
-    "test:all": "node tools/test-all.js"
-    ,
+    "test:all": "node tools/test-all.js",
     "enable-git-hooks": "git config core.hooksPath .githooks"
   },
   "dependencies": {
@@ -37,6 +36,7 @@
     "morgan": "^1.10.0",
     "node-fetch": "^2.7.0",
     "proj4": "^2.20.2",
+    "puppeteer": "^24.31.0",
     "sharp": "^0.34.5",
     "socket.io": "^4.0.1",
     "yauzl": "^3.2.0"

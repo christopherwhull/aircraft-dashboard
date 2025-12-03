@@ -1,406 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-    <meta http-equiv="Pragma" content="no-cache" />
-    <meta http-equiv="Expires" content="0" />
-    <title>Aircraft Heatmap - 1nm Grid</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <style>
-        :root {
-            --bg: #0f0f10;
-            --panel-bg: #121213;
-            --card-bg: #1b1b1b;
-            --text: #e0e0e0;
-            --muted: #bbb;
-            --accent: #0066cc;
-            --highlight: #00ff99;
-        }
 
-        /* Apply dark backgrounds to all non-map UI areas by default */
-        body {
-            background: var(--bg);
-            color: var(--text);
-            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
-        }
 
-        /* Keep the map area visually separate; #map has its own background rule already */
-        .header {
-            background: var(--panel-bg);
-            padding: 12px 16px;
-            border-bottom: 1px solid #222;
-        }
 
-        .controls {
-            background: transparent;
-            padding: 8px 16px 16px 16px;
-        }
-
-        .info-panel {
-            background: transparent;
-            color: var(--text);
-        }
-
-        .legend { background: rgba(18,18,18,0.95); color: var(--text); }
-        .info-card { background: var(--card-bg); color: var(--text); border-left-color: var(--accent); }
-        select, input { background: #141414; color: var(--text); border-color: #2b2b2b }
-        .error { background: #b71c1c }
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        /* Map container must have an explicit height for Leaflet to render */
-        #map {
-            width: 100%;
-            height: calc(100vh - 340px);
-            min-height: 360px;
-            background: #111;
-        }
-
-        .header h1 {
-            font-size: 24px;
-            margin-bottom: 10px;
-        }
-
-        .controls {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 15px;
-            margin-bottom: 15px;
-            align-items: center;
-        }
-
-        .control-group {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .control-group label {
-            font-weight: 500;
-            color: #bbb;
-            min-width: 100px;
-        }
-
-        select, input {
-            padding: 6px 10px;
-            background: #1e1e1e;
-            color: #e0e0e0;
-            border: 1px solid #444;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-
-        button {
-            padding: 6px 15px;
-            background: #0066cc;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: background 0.2s;
-        }
-
-        button:hover {
-            background: #0052a3;
-        }
-
-        button:active {
-            transform: scale(0.98);
-        }
-
-        .info-panel {
-            padding: 15px;
-            background: #2a2a2a;
-            border-top: 1px solid #333;
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 15px;
-        }
-
-        .info-card {
-            background: #1e1e1e;
-            padding: 12px;
-            border-radius: 4px;
-            border-left: 3px solid #0066cc;
-        }
-
-        .status-ok { color: #76c776; }
-        .status-loading { color: #ffd166; }
-        .status-error { color: #ff6b6b; }
-
-        .info-card strong {
-            display: block;
-            color: #0066cc;
-            margin-bottom: 5px;
-        }
-
-        .info-card span {
-            font-size: 14px;
-            color: #bbb;
-        }
-
-        .loading {
-            display: none;
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.9);
-            color: white;
-            padding: 30px;
-            border-radius: 8px;
-            text-align: center;
-            z-index: 1000;
-        }
-
-        .loading.active {
-            display: block;
-        }
-
-        .spinner {
-            display: inline-block;
-            width: 40px;
-            height: 40px;
-            border: 4px solid rgba(255, 255, 255, 0.3);
-            border-top-color: white;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-bottom: 10px;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .legend {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            background: rgba(255, 255, 255, 0.95);
-            padding: 15px;
-            border-radius: 5px;
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
-            z-index: 400;
-            max-width: 300px;
-            font-size: 12px;
-            color: #333;
-        }
-
-        .legend h4 {
-            margin: 0 0 10px 0;
-            font-size: 14px;
-        }
-
-        .legend-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-
-        .legend-color {
-            width: 20px;
-            height: 20px;
-            border-radius: 3px;
-            margin-right: 8px;
-        }
-
-        .error {
-            background: #c62828;
-            color: white;
-            padding: 15px;
-            border-radius: 4px;
-            margin: 10px;
-            display: none;
-        }
-
-        .error.show {
-            display: block;
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>🛩️ Aircraft Position Grid (1nm × 1nm) - Leaflet</h1>
-
-        <div class="controls">
-            <div class="control-group">
-                <label for="time-window">Time Window:</label>
-                <select id="time-window">
-                    <option value="1h">1 Hour</option>
-                    <option value="4h">4 Hours</option>
-                    <option value="12h">12 Hours</option>
-                    <option value="24h" selected>24 Hours</option>
-                    <option value="7d">7 Days</option>
-                    <option value="all">All Time</option>
-                </select>
-            </div>
-
-            <div class="control-group">
-                <label for="color-mode">Color:</label>
-                <select id="color-mode">
-                    <option value="intensity" selected>Intensity</option>
-                    <option value="density">Density Gradient</option>
-                    <option value="altitude">Altitude-based</option>
-                </select>
-            </div>
-
-            <div class="control-group">
-                <label for="scaling-mode">Scaling:</label>
-                <select id="scaling-mode">
-                    <option value="linear">Linear</option>
-                    <option value="log" selected>Logarithmic</option>
-                    <option value="sqrt">Square Root</option>
-                    <option value="power">Power (γ=2.2)</option>
-                </select>
-            </div>
-
-            <div class="control-group">
-                <label for="opacity">Opacity:</label>
-                <input type="range" id="opacity" min="0.1" max="1.0" step="0.1" value="0.7" style="width: 100px;">
-                <span id="opacity-value">0.7</span>
-            </div>
-
-            <div class="control-group">
-                <label for="show-borders">
-                    <input type="checkbox" id="show-borders"> Show Borders
-                </label>
-            </div>
-
-            <div class="control-group">
-                <label for="show-live">
-                    <input type="checkbox" id="show-live"> Show Live Positions
-                </label>
-            </div>
-
-            <div class="control-group">
-                <label for="use-external-squawk">
-                    <input type="checkbox" id="use-external-squawk"> Use External Squawk API
-                </label>
-            </div>
-
-            <div class="control-group" style="min-width:260px;">
-                <label for="squawk-api-base">Squawk API Base:</label>
-                <input id="squawk-api-base" type="text" placeholder="https://squawk.example/api" style="width:220px;">
-            </div>
-
-            <div class="control-group">
-                <label for="track-window-input">Track Window (min):</label>
-                <input id="track-window-input" type="number" min="1" max="1440" step="1" value="10" style="width:70px;">
-            </div>
-
-            <div class="control-group">
-                <label for="show-long-tracks">
-                    <input type="checkbox" id="show-long-tracks"> Show Long Tracks
-                </label>
-            </div>
-
-            <div class="control-group">
-                <label for="persist-on-click">
-                    <input type="checkbox" id="persist-on-click"> Persist track on click
-                </label>
-            </div>
-
-            <div class="control-group">
-                <label for="dark-mode">
-                    <input type="checkbox" id="dark-mode"> Dark Mode
-                </label>
-            </div>
-
-            <div class="control-group">
-                <button id="clear-persistent-tracks" onclick="clearAllPersistentTracks()">Clear Tracks</button>
-            </div>
-
-            <div class="control-group">
-                <button id="toggle-persistent-visibility" onclick="togglePersistentVisibility()">Hide Persisted Tracks</button>
-            </div>
-
-            <div class="control-group">
-                <button id="toggle-debug-dump" onclick="toggleDebugDump()">Show Debug Dump</button>
-            </div>
-
-            <button onclick="loadGridData()">🔄 Refresh</button>
-            <button onclick="toggleLegend()">📋 Legend</button>
-            <button onclick="resetMap()">🏠 Reset View</button>
-        </div>
-
-        <div id="error" class="error"></div>
-    </div>
-
-    <div id="map"></div>
-
-    <div class="info-panel">
-        <div class="info-card">
-            <strong>Grid Cells</strong>
-            <span id="cell-count">Loading...</span>
-        </div>
-        <div class="info-card">
-            <strong>Total Positions</strong>
-            <span id="point-count">Loading...</span>
-        </div>
-        <div class="info-card">
-            <strong>Load Time</strong>
-            <span id="load-time">Loading...</span>
-        </div>
-        <div class="info-card">
-            <strong>Max Density</strong>
-            <span id="max-density">Loading...</span>
-        </div>
-        <div class="info-card">
-            <strong>Coverage Area</strong>
-            <span id="coverage-area">Loading...</span>
-        </div>
-        <div class="info-card">
-            <strong>Live Fetch</strong>
-            <span id="live-fetch-status" class="status-loading">idle</span>
-        </div>
-        <div class="info-card">
-            <strong>Track Fetch</strong>
-            <span id="track-fetch-status">idle</span>
-        </div>
-        <div class="info-card">
-            <strong>Persisted Tracks</strong>
-            <span id="persisted-tracks-indicator">0</span>
-            <div id="persisted-tracks-list" style="margin-top:6px;font-size:12px;color:#bbb;max-height:72px;overflow:auto"></div>
-        </div>
-        <div class="info-card" id="debug-card">
-            <strong>Debug</strong>
-            <span id="debug-panel" style="font-size:12px;color:#bbb;display:block;max-height:72px;overflow:auto">No hex selected</span>
-        </div>
-    </div>
-
-    <div id="loading" class="loading">
-        <div class="spinner"></div>
-        <p>Loading grid data...</p>
-    </div>
-
-    <div id="legend" class="legend" style="display: none;">
-        <h4>Position Density</h4>
-        <div class="legend-item">
-            <div class="legend-color" style="background: rgba(0, 0, 255, 0.3);"></div>
-            <span>Low (1-10)</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-color" style="background: rgba(0, 255, 0, 0.5);"></div>
-            <span>Medium (11-50)</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-color" style="background: rgba(255, 255, 0, 0.7);"></div>
-            <span>High (51-200)</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-color" style="background: rgba(255, 0, 0, 0.8);"></div>
-            <span>Very High (200+)</span>
-        </div>
-    </div>
-
-    <script>
         // Initialize map centered on Great Lakes region where FAA sectional charts are available
         const map = L.map('map').setView([42.0, -87.9], 7); // Center on Chicago/Great Lakes
 
@@ -737,11 +337,6 @@
         const LONG_TRACKS_POLL_MS = 15000; // fetch long tracks every 15s when enabled
         const LONG_TRACKS_BATCH_SIZE = 8; // chunk size for parallel requests
 
-        // Live tracks layer: short recent tracks for currently active flights
-        let liveTracksLayer = L.layerGroup();
-        let liveTracksIntervalId = null;
-        const LIVE_TRACKS_POLL_MS = 7000; // refresh live tracks every 7s
-
         // Persistent tracks shown when user clicks with "Persist track on click" enabled
         const persistentTracksLayer = L.layerGroup();
         persistentTracksLayer.addTo(map);
@@ -945,22 +540,6 @@
             try { longTracksLayer.clearLayers(); if (map.hasLayer(longTracksLayer)) map.removeLayer(longTracksLayer); } catch (e) {}
         }
 
-        function startLiveTracksPolling() {
-            if (liveTracksIntervalId) return;
-            // initial run
-            fetchAndDrawLiveTracks();
-            liveTracksIntervalId = setInterval(fetchAndDrawLiveTracks, LIVE_TRACKS_POLL_MS);
-            if (!map.hasLayer(liveTracksLayer)) liveTracksLayer.addTo(map);
-        }
-
-        function stopLiveTracksPolling() {
-            if (liveTracksIntervalId) {
-                clearInterval(liveTracksIntervalId);
-                liveTracksIntervalId = null;
-            }
-            try { liveTracksLayer.clearLayers(); if (map.hasLayer(liveTracksLayer)) map.removeLayer(liveTracksLayer); } catch (e) {}
-        }
-
         async function fetchAndDrawLongTracks() {
             try {
                 // gather visible hexes from liveMarkers
@@ -997,32 +576,20 @@
                     results.forEach((res, idx) => {
                         try {
                             const pts = (res && res.points) || [];
-                                if (pts.length >= 2) {
+                            if (pts.length >= 2) {
                                 // Compute altitude delta (if alt available) and choose color: green for climb, red for descent, default teal
                                 let color = '#00ff99';
                                 const firstAlt = pts[0] && typeof pts[0].alt === 'number' ? pts[0].alt : null;
                                 const lastAlt = pts[pts.length - 1] && typeof pts[pts.length - 1].alt === 'number' ? pts[pts.length - 1].alt : null;
-                                let hasClimbDesc = false;
                                 if (firstAlt !== null && lastAlt !== null) {
                                     const delta = lastAlt - firstAlt;
                                     const thresh = 50; // altitude change threshold in feet to consider climb/descent
-                                    if (delta > thresh) { color = 'green'; hasClimbDesc = true; }
-                                    else if (delta < -thresh) { color = 'red'; hasClimbDesc = true; }
+                                    if (delta > thresh) color = 'green';
+                                    else if (delta < -thresh) color = 'red';
                                 }
-                                // If no clear climb/descent, highlight sharp angular changes in yellow
-                                if (!hasClimbDesc) {
-                                    try {
-                                        const ang = maxTrackAngularChange(pts);
-                                        if (ang > 5) color = 'yellow';
-                                    } catch (e) {}
-                                }
-                                const latlngs = densifyTrackPoints(pts, 0.1);
-                                const poly = L.polyline(latlngs, { color: color, weight: 2, opacity: 0.65, pane: 'livePane', interactive: false });
-                                // Start/end markers for context
-                                const start = L.circleMarker(latlngs[0], { radius: 3, fillColor: '#00ff00', color: '#006600', weight: 1, fillOpacity: 0.9, pane: 'livePane' });
-                                const end = L.circleMarker(latlngs[latlngs.length - 1], { radius: 3, fillColor: '#ff0000', color: '#660000', weight: 1, fillOpacity: 0.9, pane: 'livePane' });
-                                const lg = L.layerGroup([poly, start, end]);
-                                longTracksLayer.addLayer(lg);
+                                const latlngs = pts.map(p => [p.lat, p.lon]);
+                                const poly = L.polyline(latlngs, { color: color, weight: 2, opacity: 0.65, pane: 'livePane' });
+                                longTracksLayer.addLayer(poly);
                             }
                         } catch (e) {}
                     });
@@ -1031,74 +598,6 @@
                 if (!map.hasLayer(longTracksLayer)) longTracksLayer.addTo(map);
             } catch (err) {
                 console.warn('Long tracks fetch/draw error', err);
-            }
-        }
-
-        // Fetch and draw short live tracks for currently active flights (visible on the map)
-        async function fetchAndDrawLiveTracks() {
-            try {
-                // gather visible hexes from liveMarkers
-                const bounds = map.getBounds();
-                const visible = [];
-                liveMarkers.forEach((marker, hex) => {
-                    try {
-                        const latlng = marker.getLatLng();
-                        if (latlng && bounds.contains(latlng)) {
-                            const lk = (hex || '').toString().toLowerCase();
-                            visible.push(lk);
-                        }
-                    } catch (e) {}
-                });
-                if (visible.length === 0) {
-                    // nothing to draw
-                    stopLiveTracksPolling();
-                    return;
-                }
-
-                // clear current live tracks before redrawing
-                liveTracksLayer.clearLayers();
-
-                // Use the UI-selected minutes window
-                const minutesElem = document.getElementById('track-window-input');
-                const minutes = minutesElem ? Math.max(1, parseInt(minutesElem.value, 10) || 1) : 1;
-
-                // chunk visible into batches
-                for (let i = 0; i < visible.length; i += LONG_TRACKS_BATCH_SIZE) {
-                    const chunk = visible.slice(i, i + LONG_TRACKS_BATCH_SIZE);
-                    const promises = chunk.map(hx => fetchTrackWithCache(hx, minutes).catch(() => ({ points: [] })));
-                    const results = await Promise.all(promises);
-                    results.forEach((res, idx) => {
-                        try {
-                            const pts = (res && res.points) || [];
-                                if (pts.length >= 2) {
-                                let color = '#00ffff';
-                                const firstAlt = pts[0] && typeof pts[0].alt === 'number' ? pts[0].alt : null;
-                                const lastAlt = pts[pts.length - 1] && typeof pts[pts.length - 1].alt === 'number' ? pts[pts.length - 1].alt : null;
-                                let hasClimbDesc = false;
-                                if (firstAlt !== null && lastAlt !== null) {
-                                    const delta = lastAlt - firstAlt;
-                                    const thresh = 50;
-                                    if (delta > thresh) { color = 'green'; hasClimbDesc = true; }
-                                    else if (delta < -thresh) { color = 'red'; hasClimbDesc = true; }
-                                }
-                                if (!hasClimbDesc) {
-                                    try { const ang = maxTrackAngularChange(pts); if (ang > 5) color = 'yellow'; } catch (e) {}
-                                }
-                                const latlngs = densifyTrackPoints(pts, 0.1);
-                                const poly = L.polyline(latlngs, { color: color, weight: 2, opacity: 0.9, pane: 'livePane', interactive: false });
-                                // add small start/end markers for live tracks
-                                const start = L.circleMarker(latlngs[0], { radius: 2, fillColor: '#00ff00', color: '#006600', weight: 1, fillOpacity: 0.9, pane: 'livePane' });
-                                const end = L.circleMarker(latlngs[latlngs.length - 1], { radius: 2, fillColor: '#ff0000', color: '#660000', weight: 1, fillOpacity: 0.9, pane: 'livePane' });
-                                const lg = L.layerGroup([poly, start, end]);
-                                liveTracksLayer.addLayer(lg);
-                            }
-                        } catch (e) {}
-                    });
-                }
-                // ensure the layer is on the map
-                if (!map.hasLayer(liveTracksLayer)) liveTracksLayer.addTo(map);
-            } catch (err) {
-                console.warn('Live tracks fetch/draw error', err);
             }
         }
 
@@ -1890,31 +1389,26 @@
                                     try {
                                         const { points, cached } = await fetchTrackWithCache(hex, minutes);
                                         if (points.length > 0) {
-                                                    // compute color based on altitude change if available
-                                                    let color = '#00ffff';
-                                                    const firstAlt = points[0] && typeof points[0].alt === 'number' ? points[0].alt : null;
-                                                    const lastAlt = points[points.length - 1] && typeof points[points.length - 1].alt === 'number' ? points[points.length - 1].alt : null;
-                                                    let hasClimbDesc = false;
-                                                    if (firstAlt !== null && lastAlt !== null) {
-                                                        const delta = lastAlt - firstAlt;
-                                                        const thresh = 50;
-                                                        if (delta > thresh) { color = 'green'; hasClimbDesc = true; }
-                                                        else if (delta < -thresh) { color = 'red'; hasClimbDesc = true; }
-                                                    }
-                                                    // If no climb/descent, highlight sharp angular changes in yellow
-                                                    if (!hasClimbDesc) {
-                                                        try { const ang = maxTrackAngularChange(points); if (ang > 5) color = 'yellow'; } catch (e) {}
-                                                    }
-                                                    const latlngs = densifyTrackPoints(points, 0.1);
-                                                    const poly = L.polyline(latlngs, { color: color, weight: 3, opacity: 0.9, pane: 'livePane', interactive: false });
-                                                    const start = L.circleMarker(latlngs[0], { radius: 3, fillColor: '#00ff00', color: '#006600', weight: 1, fillOpacity: 0.9, pane: 'livePane' });
-                                                    const end = L.circleMarker(latlngs[latlngs.length - 1], { radius: 3, fillColor: '#ff0000', color: '#660000', weight: 1, fillOpacity: 0.9, pane: 'livePane' });
-                                                    // group for easy removal
-                                                    const lg = L.layerGroup([poly, start, end]);
-                                                    trackLayer.addLayer(lg);
-                                                    trackLayer.addTo(map);
-                                                    setTrackStatus(formatOkWithTime(`OK (${points.length})${cached ? ' (cached)' : ''}`), 'ok');
-                                                } else {
+                                            // compute color based on altitude change if available
+                                            let color = '#00ffff';
+                                            const firstAlt = points[0] && typeof points[0].alt === 'number' ? points[0].alt : null;
+                                            const lastAlt = points[points.length - 1] && typeof points[points.length - 1].alt === 'number' ? points[points.length - 1].alt : null;
+                                            if (firstAlt !== null && lastAlt !== null) {
+                                                const delta = lastAlt - firstAlt;
+                                                const thresh = 50;
+                                                if (delta > thresh) color = 'green';
+                                                else if (delta < -thresh) color = 'red';
+                                            }
+                                            const latlngs = points.map(p => [p.lat, p.lon]);
+                                            const poly = L.polyline(latlngs, { color: color, weight: 3, opacity: 0.9, pane: 'livePane', interactive: false });
+                                            const start = L.circleMarker(latlngs[0], { radius: 3, fillColor: '#00ff00', color: '#006600', weight: 1, fillOpacity: 0.9, pane: 'livePane' });
+                                            const end = L.circleMarker(latlngs[latlngs.length - 1], { radius: 3, fillColor: '#ff0000', color: '#660000', weight: 1, fillOpacity: 0.9, pane: 'livePane' });
+                                            trackLayer.addLayer(poly);
+                                            trackLayer.addLayer(start);
+                                            trackLayer.addLayer(end);
+                                            trackLayer.addTo(map);
+                                            setTrackStatus(formatOkWithTime(`OK (${points.length})${cached ? ' (cached)' : ''}`), 'ok');
+                                        } else {
                                             setTrackStatus('No data', 'error');
                                         }
                                     } catch (err) {
@@ -1982,7 +1476,7 @@
                                     const { points } = await fetchTrackWithCache(hex, minutes);
                                     if (points.length > 0) {
                                         // draw on tempPersistentLayer (distinct style)
-                                        const latlngs = densifyTrackPoints(points, 0.1);
+                                        const latlngs = points.map(p => [p.lat, p.lon]);
                                         const poly = L.polyline(latlngs, { color: '#ffaa00', weight: 3, opacity: 0.9, dashArray: '6,4', pane: 'persistentPane', interactive: false });
                                         const start = L.circleMarker(latlngs[0], { radius: 3, fillColor: '#00ff00', color: '#006600', weight: 1, fillOpacity: 0.9, pane: 'persistentPane' });
                                         const end = L.circleMarker(latlngs[latlngs.length - 1], { radius: 3, fillColor: '#ff0000', color: '#660000', weight: 1, fillOpacity: 0.9, pane: 'persistentPane' });
@@ -2032,7 +1526,7 @@
                                         if (delta > thresh) color = 'green';
                                         else if (delta < -thresh) color = 'red';
                                     }
-                                    const latlngs = densifyTrackPoints(points, 0.1);
+                                    const latlngs = points.map(p => [p.lat, p.lon]);
                                     const poly = L.polyline(latlngs, { color: color, weight: 3, opacity: 0.95, pane: 'persistentPane', interactive: false });
                                     const start = L.circleMarker(latlngs[0], { radius: 4, fillColor: '#00ff00', color: '#006600', weight: 1, fillOpacity: 0.95, pane: 'persistentPane' });
                                     const end = L.circleMarker(latlngs[latlngs.length - 1], { radius: 4, fillColor: '#ff0000', color: '#660000', weight: 1, fillOpacity: 0.95, pane: 'persistentPane' });
@@ -2135,8 +1629,6 @@
                 liveIntervalId = setInterval(fetchLivePositions, 5000);
                 // Start batch polling for visible aircraft (rate-limited)
                 try { startBatchPollingVisibleFlights(); } catch (e) { console.warn('Failed to start batch polling', e); }
-                // Start live tracks polling to draw short recent tracks for active flights
-                try { startLiveTracksPolling(); } catch (e) { console.warn('Failed to start live tracks polling', e); }
             } else {
                 if (liveIntervalId) { clearInterval(liveIntervalId); liveIntervalId = null; }
                 clearLiveLayer();
@@ -2146,8 +1638,6 @@
                 if (map.hasLayer(trackLayer)) map.removeLayer(trackLayer);
                 // Stop batch polling when live is disabled
                 try { stopBatchPollingVisibleFlights(); } catch (e) {}
-                // Stop live tracks polling and clear live tracks
-                try { stopLiveTracksPolling(); } catch (e) {}
             }
         }
 
@@ -2172,108 +1662,6 @@
                 if (θ < 0) θ += 360;
                 return Math.round(θ);
             } catch (e) { return null; }
-        }
-
-        // Compute maximum angular change between consecutive course segments for a track
-        // points: [{lat,lon,...}, ...] -> returns max delta in degrees
-        function maxTrackAngularChange(points) {
-            try {
-                if (!Array.isArray(points) || points.length < 3) return 0;
-                const bearings = [];
-                for (let i = 0; i < points.length - 1; i++) {
-                    const a = points[i];
-                    const b = points[i+1];
-                    if (a == null || b == null) { bearings.push(null); continue; }
-                    const ba = computeBearing(a.lat, a.lon, b.lat, b.lon);
-                    bearings.push(typeof ba === 'number' ? ba : null);
-                }
-
-                // Compute central angle (degrees) between two lat/lon points on a sphere
-                function centralAngleDeg(lat1, lon1, lat2, lon2) {
-                    const toRad = v => v * Math.PI / 180;
-                    const φ1 = toRad(lat1);
-                    const φ2 = toRad(lat2);
-                    const Δφ = toRad(lat2 - lat1);
-                    const Δλ = toRad(lon2 - lon1);
-                    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
-                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-                    return c * 180 / Math.PI;
-                }
-
-                // Interpolate an intermediate point on the great-circle between two points
-                // fraction in [0,1]
-                function interpolateGreatCircle(lat1, lon1, lat2, lon2, f) {
-                    const toRad = v => v * Math.PI / 180;
-                    const toDeg = v => v * 180 / Math.PI;
-                    const φ1 = toRad(lat1), λ1 = toRad(lon1);
-                    const φ2 = toRad(lat2), λ2 = toRad(lon2);
-
-                    const sinφ1 = Math.sin(φ1), cosφ1 = Math.cos(φ1);
-                    const sinφ2 = Math.sin(φ2), cosφ2 = Math.cos(φ2);
-
-                    // angular distance
-                    const Δλ = λ2 - λ1;
-                    const cosΔλ = Math.cos(Δλ);
-                    const δ = Math.acos(Math.max(-1, Math.min(1, sinφ1 * sinφ2 + cosφ1 * cosφ2 * cosΔλ)));
-                    if (δ === 0) return [lat1, lon1];
-                    const sinδ = Math.sin(δ);
-                    const A = Math.sin((1 - f) * δ) / sinδ;
-                    const B = Math.sin(f * δ) / sinδ;
-
-                    const x = A * cosφ1 * Math.cos(λ1) + B * cosφ2 * Math.cos(λ2);
-                    const y = A * cosφ1 * Math.sin(λ1) + B * cosφ2 * Math.sin(λ2);
-                    const z = A * sinφ1 + B * sinφ2;
-
-                    const φi = Math.atan2(z, Math.sqrt(x * x + y * y));
-                    const λi = Math.atan2(y, x);
-                    return [toDeg(φi), toDeg(λi)];
-                }
-
-                // Densify a track (array of {lat,lon,...}) by interpolating intermediate great-circle
-                // points so each segment is at most `maxDeg` degrees of central angle.
-                function densifyTrackPoints(points, maxDeg = 0.25) {
-                    if (!Array.isArray(points) || points.length < 2) return (points || []).map(p => [p.lat, p.lon]);
-                    const out = [];
-                    for (let i = 0; i < points.length - 1; i++) {
-                        const a = points[i];
-                        const b = points[i+1];
-                        if (!a || !b) continue;
-                        const lat1 = Number(a.lat), lon1 = Number(a.lon);
-                        const lat2 = Number(b.lat), lon2 = Number(b.lon);
-                        out.push([lat1, lon1]);
-                        const ang = centralAngleDeg(lat1, lon1, lat2, lon2);
-                        const steps = Math.max(1, Math.ceil(ang / maxDeg));
-                        // add intermediate points (exclude endpoints)
-                        for (let s = 1; s < steps; s++) {
-                            const f = s / steps;
-                            try {
-                                const ip = interpolateGreatCircle(lat1, lon1, lat2, lon2, f);
-                                out.push(ip);
-                            } catch (e) {
-                                // fallback: linear interpolation
-                                const ilat = lat1 + (lat2 - lat1) * (s / steps);
-                                const ilon = lon1 + (lon2 - lon1) * (s / steps);
-                                out.push([ilat, ilon]);
-                            }
-                        }
-                    }
-                    // push last point
-                    const last = points[points.length - 1];
-                    out.push([Number(last.lat), Number(last.lon)]);
-                    return out;
-                }
-                let maxDelta = 0;
-                for (let i = 0; i < bearings.length - 1; i++) {
-                    const b1 = bearings[i];
-                    const b2 = bearings[i+1];
-                    if (b1 == null || b2 == null) continue;
-                    // minimal angular difference
-                    let diff = Math.abs(b2 - b1) % 360;
-                    if (diff > 180) diff = 360 - diff;
-                    if (diff > maxDelta) maxDelta = diff;
-                }
-                return maxDelta;
-            } catch (e) { return 0; }
         }
 
         // Get color based on intensity
@@ -2443,7 +1831,6 @@
             // Ensure live positions and persisted tracks overlays are available in the control
             try { layersControl.addOverlay(liveLayer, 'Positions (Live)'); } catch (e) {}
             try { layersControl.addOverlay(persistentTracksLayer, 'Persisted Tracks'); } catch (e) {}
-            try { layersControl.addOverlay(liveTracksLayer, 'Live Tracks'); } catch (e) {}
 
             // If the user has 'Show Live' checked, ensure live polling is started so tooltips populate
             try {
@@ -2483,6 +1870,4 @@
 
         // Load initial data
         loadGridData();
-    </script>
-</body>
-</html>
+    
