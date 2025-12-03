@@ -2,6 +2,53 @@
 
 Welcome to the project wiki. Start here for an overview and quick links.
 
+## Quick Links
+- [Live](Live) — Live aircraft tracking and table
+- [Heatmap](Heatmap) — Leaflet heatmap viewer
+- [Flights](Flights) — Flight list and details
+- [Airlines](Airlines) — Airline statistics
+- [Positions](Positions) — Position data and timeseries
+- [Squawk](Squawk) — Squawk lookup and examples
+- [Reception](Reception) — Piaware reception maps
+- [Cache Status](Cache-Status) — Cache & enrichment status
+ 
+## All Pages
+A full list of wiki pages for quick navigation:
+
+- [Home](Home)
+- [Live](Live)
+- [Heatmap](Heatmap)
+- [Flights](Flights)
+- [Airlines](Airlines)
+- [Positions](Positions)
+- [Squawk](Squawk)
+- [Reception](Reception)
+- [Cache Status](Cache-Status)
+- [HTML Pages](HTML_PAGES)
+- [TABS Index](TABS)
+- [AI Helper](AI-Helper)
+- [S3 Diagnostics](S3-Diagnostics)
+- [Release Process](Release-Process)
+
+ 
+## All Pages
+A full list of wiki pages for quick navigation:
+
+- [Home](Home)
+- [Live](Live)
+- [Heatmap](Heatmap)
+- [Flights](Flights)
+- [Airlines](Airlines)
+- [Positions](Positions)
+- [Squawk](Squawk)
+- [Reception](Reception)
+- [Cache Status](Cache-Status)
+- [HTML Pages](HTML_PAGES)
+- [TABS Index](TABS)
+- [AI Helper](AI-Helper)
+- [S3 Diagnostics](S3-Diagnostics)
+- [Release Process](Release-Process)
+
 - Getting Started: see README.md (install, configure, run)
 - Configuration: `CONFIGURATION.md` and `MINIO_SETUP.md`
 - Linux production: `LINUX_SETUP.md` and `aircraft-dashboard.service`
