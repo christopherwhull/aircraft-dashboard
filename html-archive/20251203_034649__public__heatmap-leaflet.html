@@ -1017,11 +1017,10 @@
                                     } catch (e) {}
                                 }
                                 const latlngs = densifyTrackPoints(pts, 0.1);
-                                // Draw historical (long) tracks on the persistent pane so they sit above overlay tiles
-                                const poly = L.polyline(latlngs, { color: color, weight: 3, opacity: 0.95, pane: 'persistentPane', interactive: false });
-                                // Start/end markers for context (placed on persistentPane)
-                                const start = L.circleMarker(latlngs[0], { radius: 4, fillColor: '#00ff00', color: '#006600', weight: 1, fillOpacity: 0.95, pane: 'persistentPane' });
-                                const end = L.circleMarker(latlngs[latlngs.length - 1], { radius: 4, fillColor: '#ff0000', color: '#660000', weight: 1, fillOpacity: 0.95, pane: 'persistentPane' });
+                                const poly = L.polyline(latlngs, { color: color, weight: 2, opacity: 0.65, pane: 'livePane', interactive: false });
+                                // Start/end markers for context
+                                const start = L.circleMarker(latlngs[0], { radius: 3, fillColor: '#00ff00', color: '#006600', weight: 1, fillOpacity: 0.9, pane: 'livePane' });
+                                const end = L.circleMarker(latlngs[latlngs.length - 1], { radius: 3, fillColor: '#ff0000', color: '#660000', weight: 1, fillOpacity: 0.9, pane: 'livePane' });
                                 const lg = L.layerGroup([poly, start, end]);
                                 longTracksLayer.addLayer(lg);
                             }
@@ -2175,81 +2174,6 @@
             } catch (e) { return null; }
         }
 
-        // Compute central angle (degrees) between two lat/lon points on a sphere
-        function centralAngleDeg(lat1, lon1, lat2, lon2) {
-            const toRad = v => v * Math.PI / 180;
-            const φ1 = toRad(lat1);
-            const φ2 = toRad(lat2);
-            const Δφ = toRad(lat2 - lat1);
-            const Δλ = toRad(lon2 - lon1);
-            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-            return c * 180 / Math.PI;
-        }
-
-        // Interpolate an intermediate point on the great-circle between two points
-        // fraction in [0,1]
-        function interpolateGreatCircle(lat1, lon1, lat2, lon2, f) {
-            const toRad = v => v * Math.PI / 180;
-            const toDeg = v => v * 180 / Math.PI;
-            const φ1 = toRad(lat1), λ1 = toRad(lon1);
-            const φ2 = toRad(lat2), λ2 = toRad(lon2);
-
-            const sinφ1 = Math.sin(φ1), cosφ1 = Math.cos(φ1);
-            const sinφ2 = Math.sin(φ2), cosφ2 = Math.cos(φ2);
-
-            // angular distance
-            const Δλ = λ2 - λ1;
-            const cosΔλ = Math.cos(Δλ);
-            const δ = Math.acos(Math.max(-1, Math.min(1, sinφ1 * sinφ2 + cosφ1 * cosφ2 * cosΔλ)));
-            if (δ === 0) return [lat1, lon1];
-            const sinδ = Math.sin(δ);
-            const A = Math.sin((1 - f) * δ) / sinδ;
-            const B = Math.sin(f * δ) / sinδ;
-
-            const x = A * cosφ1 * Math.cos(λ1) + B * cosφ2 * Math.cos(λ2);
-            const y = A * cosφ1 * Math.sin(λ1) + B * cosφ2 * Math.sin(λ2);
-            const z = A * sinφ1 + B * sinφ2;
-
-            const φi = Math.atan2(z, Math.sqrt(x * x + y * y));
-            const λi = Math.atan2(y, x);
-            return [toDeg(φi), toDeg(λi)];
-        }
-
-        // Densify a track (array of {lat,lon,...}) by interpolating intermediate great-circle
-        // points so each segment is at most `maxDeg` degrees of central angle.
-        function densifyTrackPoints(points, maxDeg = 0.25) {
-            if (!Array.isArray(points) || points.length < 2) return (points || []).map(p => [p.lat, p.lon]);
-            const out = [];
-            for (let i = 0; i < points.length - 1; i++) {
-                const a = points[i];
-                const b = points[i+1];
-                if (!a || !b) continue;
-                const lat1 = Number(a.lat), lon1 = Number(a.lon);
-                const lat2 = Number(b.lat), lon2 = Number(b.lon);
-                out.push([lat1, lon1]);
-                const ang = centralAngleDeg(lat1, lon1, lat2, lon2);
-                const steps = Math.max(1, Math.ceil(ang / maxDeg));
-                // add intermediate points (exclude endpoints)
-                for (let s = 1; s < steps; s++) {
-                    const f = s / steps;
-                    try {
-                        const ip = interpolateGreatCircle(lat1, lon1, lat2, lon2, f);
-                        out.push(ip);
-                    } catch (e) {
-                        // fallback: linear interpolation
-                        const ilat = lat1 + (lat2 - lat1) * (s / steps);
-                        const ilon = lon1 + (lon2 - lon1) * (s / steps);
-                        out.push([ilat, ilon]);
-                    }
-                }
-            }
-            // push last point
-            const last = points[points.length - 1];
-            out.push([Number(last.lat), Number(last.lon)]);
-            return out;
-        }
-
         // Compute maximum angular change between consecutive course segments for a track
         // points: [{lat,lon,...}, ...] -> returns max delta in degrees
         function maxTrackAngularChange(points) {
@@ -2264,7 +2188,80 @@
                     bearings.push(typeof ba === 'number' ? ba : null);
                 }
 
-                // (great-circle and densify helper functions are defined at top-level)
+                // Compute central angle (degrees) between two lat/lon points on a sphere
+                function centralAngleDeg(lat1, lon1, lat2, lon2) {
+                    const toRad = v => v * Math.PI / 180;
+                    const φ1 = toRad(lat1);
+                    const φ2 = toRad(lat2);
+                    const Δφ = toRad(lat2 - lat1);
+                    const Δλ = toRad(lon2 - lon1);
+                    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                    return c * 180 / Math.PI;
+                }
+
+                // Interpolate an intermediate point on the great-circle between two points
+                // fraction in [0,1]
+                function interpolateGreatCircle(lat1, lon1, lat2, lon2, f) {
+                    const toRad = v => v * Math.PI / 180;
+                    const toDeg = v => v * 180 / Math.PI;
+                    const φ1 = toRad(lat1), λ1 = toRad(lon1);
+                    const φ2 = toRad(lat2), λ2 = toRad(lon2);
+
+                    const sinφ1 = Math.sin(φ1), cosφ1 = Math.cos(φ1);
+                    const sinφ2 = Math.sin(φ2), cosφ2 = Math.cos(φ2);
+
+                    // angular distance
+                    const Δλ = λ2 - λ1;
+                    const cosΔλ = Math.cos(Δλ);
+                    const δ = Math.acos(Math.max(-1, Math.min(1, sinφ1 * sinφ2 + cosφ1 * cosφ2 * cosΔλ)));
+                    if (δ === 0) return [lat1, lon1];
+                    const sinδ = Math.sin(δ);
+                    const A = Math.sin((1 - f) * δ) / sinδ;
+                    const B = Math.sin(f * δ) / sinδ;
+
+                    const x = A * cosφ1 * Math.cos(λ1) + B * cosφ2 * Math.cos(λ2);
+                    const y = A * cosφ1 * Math.sin(λ1) + B * cosφ2 * Math.sin(λ2);
+                    const z = A * sinφ1 + B * sinφ2;
+
+                    const φi = Math.atan2(z, Math.sqrt(x * x + y * y));
+                    const λi = Math.atan2(y, x);
+                    return [toDeg(φi), toDeg(λi)];
+                }
+
+                // Densify a track (array of {lat,lon,...}) by interpolating intermediate great-circle
+                // points so each segment is at most `maxDeg` degrees of central angle.
+                function densifyTrackPoints(points, maxDeg = 0.25) {
+                    if (!Array.isArray(points) || points.length < 2) return (points || []).map(p => [p.lat, p.lon]);
+                    const out = [];
+                    for (let i = 0; i < points.length - 1; i++) {
+                        const a = points[i];
+                        const b = points[i+1];
+                        if (!a || !b) continue;
+                        const lat1 = Number(a.lat), lon1 = Number(a.lon);
+                        const lat2 = Number(b.lat), lon2 = Number(b.lon);
+                        out.push([lat1, lon1]);
+                        const ang = centralAngleDeg(lat1, lon1, lat2, lon2);
+                        const steps = Math.max(1, Math.ceil(ang / maxDeg));
+                        // add intermediate points (exclude endpoints)
+                        for (let s = 1; s < steps; s++) {
+                            const f = s / steps;
+                            try {
+                                const ip = interpolateGreatCircle(lat1, lon1, lat2, lon2, f);
+                                out.push(ip);
+                            } catch (e) {
+                                // fallback: linear interpolation
+                                const ilat = lat1 + (lat2 - lat1) * (s / steps);
+                                const ilon = lon1 + (lon2 - lon1) * (s / steps);
+                                out.push([ilat, ilon]);
+                            }
+                        }
+                    }
+                    // push last point
+                    const last = points[points.length - 1];
+                    out.push([Number(last.lat), Number(last.lon)]);
+                    return out;
+                }
                 let maxDelta = 0;
                 for (let i = 0; i < bearings.length - 1; i++) {
                     const b1 = bearings[i];
