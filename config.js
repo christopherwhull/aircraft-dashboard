@@ -6,40 +6,51 @@
 module.exports = {
     // --- Server Configuration ---
     server: {
-        port: process.env.PORT || 3002,
-        logFile: process.env.LOG_FILE || 'runtime/server.log',
-        accessLogFile: process.env.ACCESS_LOG_FILE || 'runtime/access.log',
-        w3cLogDir: process.env.W3C_LOG_DIR || 'runtime/logs',  // Directory for W3C format logs
+        port: 3002,
+        logFile: 'runtime/server.log',
+        accessLogFile: 'runtime/access.log',
+        w3cLogDir: 'runtime/logs',  // Directory for W3C format logs
+        // Optional: CI/ops restart token. Empty disables API-driven restart.
+        restartToken: '',
+        // Optional override environment label (e.g. 'production'|'test')
+        env: 'production',
+        enforceGitClean: false,
+        // Optional git overrides for CI/testing
+        gitCommitOverride: '',
+        gitDirtyOverride: false,
+        // Dedicated ports for auxiliary services when running locally
+        geotiffPort: 3003,
+        tileProxyPort: 3004,
     },
 
     // --- Data Source Configuration ---
     dataSource: {
-        piAwareUrl: process.env.PIAWARE_URL || 'http://192.168.0.178:8080/data/aircraft.json',
+        piAwareUrl: 'http://192.168.0.178:8080/data/aircraft.json',
         receiverTimeout: 5000, // milliseconds
     },
 
     // --- S3 / MinIO Configuration ---
     s3: {
-        endpoint: process.env.S3_ENDPOINT || 'http://localhost:9000',
-        region: process.env.S3_REGION || 'us-east-1',
+        endpoint: 'http://localhost:9000',
+        region: 'us-east-1',
         credentials: {
-            accessKeyId: process.env.S3_ACCESS_KEY || 'minioadmin',
-            secretAccessKey: process.env.S3_SECRET_KEY || 'minioadmin123',
+            accessKeyId: 'minioadmin',
+            secretAccessKey: 'minioadmin123',
         },
         forcePathStyle: true, // Required for MinIO
     },
 
     // --- S3 Buckets ---
     buckets: {
-        readBucket: process.env.READ_BUCKET || 'aircraft-data',           // Historical data
-        writeBucket: process.env.WRITE_BUCKET || 'aircraft-data-new',     // Current data
+        readBucket: 'aircraft-data',           // Historical data
+        writeBucket: 'aircraft-data-new',     // Current data
         s3Prefix: 'aircraft-data/', // S3 object key prefix for aircraft tracker uploads
     },
 
     // --- State Management ---
     state: {
-        stateFile: process.env.STATE_FILE || 'runtime/dashboard-state.json',
-        lastDailyFlightBuildFile: process.env.LAST_DAILY_FILE || 'runtime/.last-daily-flight-build',
+        stateFile: 'runtime/dashboard-state.json',
+        lastDailyFlightBuildFile: 'runtime/.last-daily-flight-build',
     },
 
     // --- Time Windows and Retention ---
@@ -126,9 +137,15 @@ module.exports = {
 
     // --- Logging ---
     logging: {
-        level: process.env.LOG_LEVEL || 'info',      // 'debug', 'info', 'warn', 'error'
-        format: process.env.LOG_FORMAT || 'w3c',     // 'combined', 'common', 'dev', 'short', 'tiny', 'w3c'
+        level: 'info',      // 'debug', 'info', 'warn', 'error'
+        format: 'w3c',     // 'combined', 'common', 'dev', 'short', 'tiny', 'w3c'
         enableW3C: true, // Enable W3C extended logging
+    },
+
+    // Optional Gemini/LLM connector configuration
+    gemini: {
+        apiUrl: '',
+        apiKey: ''
     },
 
     // --- Reception Tracking (KML Export) ---
@@ -183,4 +200,30 @@ module.exports = {
             defaultSortDirection: 'desc',              // 'asc' or 'desc'
         },
     }
+    ,
+    // --- GIS Tile Bases (ArcGIS MapServer) ---
+    // These are used by the GeoTIFF server and tile proxy as fallback upstreams
+    // for FAA chart overlays. Can be overridden by the GIS_TILE_BASES env var
+    // (comma-separated).
+    gisTileBases: [
+        'https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/IFR_AreaLow/MapServer',
+        'https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/IFR_High/MapServer',
+        'https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/VFR_Sectional/MapServer',
+        'https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/VFR_Terminal/MapServer'
+    ],
+    // --- Tools / Scripts configuration ---
+    tools: {
+        // Precache helper settings
+        targetGb: 0.001, // small run for quick re-warm
+        layers: 'IFR_High',
+        zooms: '8',
+        concurrency: 4,
+        requestTimeoutMs: 5000,
+        sampleTiles: '',
+        tileServerUrl: 'http://localhost:3004',
+        // Media pack uploader
+        mediaPackDir: '',
+        dryRun: false,
+        typesFilePath: '',
+    },
 };

@@ -432,8 +432,8 @@
             subdomains: 'abcd'
         });
 
-        // Official FAA IFR Low Chart from ArcGIS
-        const faaIfrLow = L.tileLayer('http://localhost:3003/tile/IFR_AreaLow/{z}/{y}/{x}', {
+        // Official FAA IFR Low Chart from ArcGIS (served via local proxy)
+        const faaIfrLow = L.tileLayer('http://localhost:3004/tile/IFR_AreaLow/{z}/{y}/{x}', {
             attribution: '© FAA',
             maxZoom: 12,
             minZoom: 7,
@@ -441,8 +441,8 @@
             opacity: 0.8
         });
 
-        // Official FAA IFR High Chart
-        const faaIfrHigh = L.tileLayer('http://localhost:3003/tile/IFR_Enroute_High/{z}/{y}/{x}', {
+        // Official FAA IFR High Chart (served via local proxy)
+        const faaIfrHigh = L.tileLayer('http://localhost:3004/tile/IFR_High/{z}/{y}/{x}', {
             attribution: '© FAA',
             maxZoom: 12,
             minZoom: 7,
@@ -450,8 +450,8 @@
             opacity: 0.8
         });
 
-        // Official FAA VFR Sectional Chart
-        const faaVfrSectional = L.tileLayer('http://localhost:3003/tile/VFR_Sectional/{z}/{y}/{x}', {
+        // Official FAA VFR Sectional Chart (served via local proxy)
+        const faaVfrSectional = L.tileLayer('http://localhost:3004/tile/VFR_Sectional/{z}/{y}/{x}', {
             attribution: '© FAA',
             maxZoom: 12,
             minZoom: 7,
@@ -459,8 +459,8 @@
             opacity: 0.8
         });
 
-        // Official FAA VFR Terminal Area Chart
-        const faaVfrTerminal = L.tileLayer('http://localhost:3003/tile/VFR_Terminal/{z}/{y}/{x}', {
+        // Official FAA VFR Terminal Area Chart (served via local proxy)
+        const faaVfrTerminal = L.tileLayer('http://localhost:3004/tile/VFR_Terminal/{z}/{y}/{x}', {
             attribution: '© FAA',
             maxZoom: 12,
             minZoom: 7,
@@ -485,10 +485,170 @@
         osmLayer.addTo(map);
         // Keep a handle to the layers control so we can add overlays once created
         const layersControl = L.control.layers(baseLayers, overlayLayers).addTo(map);
+        // Flag to avoid adding overlays repeatedly when the grid is re-rendered
+        let overlaysRegistered = false;
+
+        // Ensure only one FAA overlay is visible at a time. When a FAA overlay
+        // is added, remove any other FAA overlay that might already be on the map.
+        // Track the active FAA overlay explicitly (works around identity/duplication issues
+        // with layer control references) and expose a simple mapping to the upstream
+        // tile path names for use by the click handler.
+        (function enforceSingleFaaOverlay() {
+            const faaLayers = [faaIfrLow, faaIfrHigh, faaVfrSectional, faaVfrTerminal];
+            // Map layer object -> upstream name
+            const faaLayerName = new Map([
+                [faaVfrSectional, 'VFR_Sectional'],
+                [faaVfrTerminal, 'VFR_Terminal'],
+                [faaIfrHigh, 'IFR_High'],
+                [faaIfrLow, 'IFR_AreaLow']
+            ]);
+            // Keep track of the most-recently-added FAA overlay (or null)
+            let activeFaaLayer = null;
+
+            map.on('overlayadd', (e) => {
+                try {
+                    if (!faaLayers.includes(e.layer)) return;
+                    // Remove any other FAA overlay layers that are present
+                    for (const l of faaLayers) {
+                        if (l !== e.layer && map.hasLayer(l)) {
+                            map.removeLayer(l);
+                        }
+                    }
+                    activeFaaLayer = e.layer;
+                } catch (err) {
+                    console.warn('Error enforcing single FAA overlay:', err);
+                }
+            });
+
+            map.on('overlayremove', (e) => {
+                try {
+                    if (!faaLayers.includes(e.layer)) return;
+                    if (activeFaaLayer === e.layer) activeFaaLayer = null;
+                } catch (err) {
+                    console.warn('Error handling FAA overlayremove:', err);
+                }
+            });
+
+            // Expose helpers used elsewhere in this file
+            window._faaLayerHelpers = window._faaLayerHelpers || {};
+            window._faaLayerHelpers.getActiveLayerName = () => (activeFaaLayer ? faaLayerName.get(activeFaaLayer) : null);
+            window._faaLayerHelpers.getActiveLayerObject = () => activeFaaLayer;
+        })();
+
+        // Deduplicate any leftover duplicate entries in layers control (cleans old client state)
+        function dedupeLayersControl() {
+            try {
+                const layers = layersControl && layersControl._layers ? layersControl._layers : null;
+                if (!layers || !Array.isArray(layers) || layers.length < 2) return false;
+
+                const seen = new Map();
+                const duplicates = [];
+                for (let i = 0; i < layers.length; i++) {
+                    const entry = layers[i];
+                    const name = entry && entry.name ? entry.name : (entry && entry.layer && entry.layer.options && entry.layer.options.name) || entry.name || '';
+                    if (seen.has(name)) {
+                        duplicates.push(i);
+                    } else {
+                        seen.set(name, i);
+                    }
+                }
+
+                if (duplicates.length === 0) return false;
+
+                // Remove duplicate entries from internal _layers array (from end to start)
+                duplicates.sort((a,b) => b - a).forEach(idx => layers.splice(idx, 1));
+
+                // Also remove duplicate DOM nodes in the control (conservative approach)
+                const container = layersControl.getContainer();
+                if (container) {
+                    const labels = container.querySelectorAll('label');
+                    const seenLabels = new Set();
+                    for (const lbl of Array.from(labels)) {
+                        const text = lbl.textContent && lbl.textContent.trim();
+                        if (!text) continue;
+                        if (seenLabels.has(text)) {
+                            lbl.remove();
+                        } else {
+                            seenLabels.add(text);
+                        }
+                    }
+                }
+
+                console.info('[layers] Removed duplicate layer entries from control');
+                return true;
+            } catch (e) {
+                console.warn('Failed to dedupe layers control:', e);
+                return false;
+            }
+        }
+
+        // Run dedupe immediately and clear saved settings cookie if we fixed duplicates
+        try {
+            const cleaned = dedupeLayersControl();
+            if (cleaned) {
+                // Clear persisted settings so stale UI state doesn't reintroduce duplicates
+                if (getCookie('leafletHeatmapSettings')) {
+                    setCookie('leafletHeatmapSettings', '', -1);
+                    console.info('[layers] Cleared saved leafletHeatmapSettings cookie due to duplicate entries');
+                }
+            }
+        } catch (e) { /* silent */ }
         
         // Log when map zoom changes
         map.on('zoomend', () => {
             // Future zoom-based logic can go here
+        });
+
+        // Helper: convert lon/lat to tile X/Y for WebMercator (z)
+        function lonLatToTile(lon, lat, z) {
+            const n = Math.pow(2, z);
+            const xtile = Math.floor((lon + 180) / 360 * n);
+            const latRad = lat * Math.PI / 180;
+            const ytile = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
+            return { x: xtile, y: ytile };
+        }
+
+        // Map click handler: when an FAA overlay is active, compute the tile at the click
+        // and open the raw tile URL in a new tab (useful for debugging / asserting tile availability).
+        map.on('click', (e) => {
+            try {
+                // If a marker or other interactive layer handled the click, ignore here
+                // (Leaflet will call marker click handlers first when clicking markers).
+                const zoom = map.getZoom();
+                const { lat, lng } = e.latlng;
+                const tile = lonLatToTile(lng, lat, zoom);
+
+                // Check FAA overlays and build corresponding tile URL where applicable.
+                // Prefer the explicit active layer tracker (set in enforceSingleFaaOverlay)
+                // to avoid identity/duplication issues; fall back to map.hasLayer checks.
+                let url = null;
+                try {
+                    const activeName = (window._faaLayerHelpers && typeof window._faaLayerHelpers.getActiveLayerName === 'function') ? window._faaLayerHelpers.getActiveLayerName() : null;
+                    if (activeName) {
+                        url = `http://localhost:3004/tile/${activeName}/${zoom}/${tile.y}/${tile.x}`;
+                    } else {
+                        if (map.hasLayer(faaVfrSectional)) {
+                            url = `http://localhost:3004/tile/VFR_Sectional/${zoom}/${tile.y}/${tile.x}`;
+                        } else if (map.hasLayer(faaVfrTerminal)) {
+                            url = `http://localhost:3004/tile/VFR_Terminal/${zoom}/${tile.y}/${tile.x}`;
+                        } else if (map.hasLayer(faaIfrHigh)) {
+                            url = `http://localhost:3004/tile/IFR_Enroute_High/${zoom}/${tile.y}/${tile.x}`;
+                        } else if (map.hasLayer(faaIfrLow)) {
+                            // use the AreaLow name (IFR_AreaLow) which matches the upstream/service name
+                            url = `http://localhost:3004/tile/IFR_AreaLow/${zoom}/${tile.y}/${tile.x}`;
+                        }
+                    }
+                } catch (err) {
+                    console.warn('Map click handler FAA overlay detection error:', err);
+                }
+
+                if (url) {
+                    // Open tile in new tab for inspection (or you can change to fetch() if preferred)
+                    window.open(url, '_blank');
+                }
+            } catch (err) {
+                console.warn('Map click handler error:', err);
+            }
         });
 
         let gridLayer = null;
@@ -2440,13 +2600,14 @@
 
             gridLayer.addTo(map);
 
-            // Register heatmap overlay in the layers control so users can toggle it
-            try { layersControl.addOverlay(gridLayer, 'Heatmap Grid'); } catch (e) {}
-
-            // Ensure live positions and persisted tracks overlays are available in the control
-            try { layersControl.addOverlay(liveLayer, 'Positions (Live)'); } catch (e) {}
-            try { layersControl.addOverlay(persistentTracksLayer, 'Persisted Tracks'); } catch (e) {}
-            try { layersControl.addOverlay(liveTracksLayer, 'Live Tracks'); } catch (e) {}
+            // Register overlays in the layers control once (avoid duplicates)
+            if (!overlaysRegistered) {
+                try { layersControl.addOverlay(gridLayer, 'Heatmap Grid'); } catch (e) {}
+                try { layersControl.addOverlay(liveLayer, 'Positions (Live)'); } catch (e) {}
+                try { layersControl.addOverlay(persistentTracksLayer, 'Persisted Tracks'); } catch (e) {}
+                try { layersControl.addOverlay(liveTracksLayer, 'Live Tracks'); } catch (e) {}
+                overlaysRegistered = true;
+            }
 
             // If the user has 'Show Live' checked, ensure live polling is started so tooltips populate
             try {
@@ -2486,6 +2647,41 @@
 
         // Load initial data
         loadGridData();
+
+        // --- Layer control events: show activity when users toggle layers ---
+        function getLayerNameFromControl(targetLayer) {
+            try {
+                const layers = layersControl && layersControl._layers ? layersControl._layers : [];
+                for (const entry of layers) {
+                    if (!entry) continue;
+                    if (entry.layer === targetLayer) return entry.name || entry.layer && entry.layer.options && entry.layer.options.name || entry.name || '';
+                }
+            } catch (e) { /* ignore */ }
+            return '';
+        }
+
+        function showLayerActionMsg(msg) {
+            try {
+                const el = document.getElementById('debug-panel');
+                if (el) el.textContent = msg;
+            } catch (e) {}
+            try { console.info('[layers] ' + msg); } catch (e) {}
+        }
+
+        map.on('overlayadd', (e) => {
+            const name = getLayerNameFromControl(e.layer) || (e && e.name) || 'overlay';
+            showLayerActionMsg(`Overlay enabled: ${name}`);
+        });
+
+        map.on('overlayremove', (e) => {
+            const name = getLayerNameFromControl(e.layer) || (e && e.name) || 'overlay';
+            showLayerActionMsg(`Overlay disabled: ${name}`);
+        });
+
+        map.on('baselayerchange', (e) => {
+            const name = (e && e.name) || 'base';
+            showLayerActionMsg(`Base layer selected: ${name}`);
+        });
     </script>
 </body>
 </html>

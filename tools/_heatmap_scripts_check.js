@@ -42,7 +42,7 @@
         });
 
         // Official FAA IFR High Chart
-        const faaIfrHigh = L.tileLayer('http://localhost:3003/tile/IFR_Enroute_High/{z}/{y}/{x}', {
+        const faaIfrHigh = L.tileLayer('http://localhost:3003/tile/IFR_High/{z}/{y}/{x}', {
             attribution: '© FAA',
             maxZoom: 12,
             minZoom: 7,
