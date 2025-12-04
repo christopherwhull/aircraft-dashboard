@@ -36,3 +36,19 @@ __pycache__/
 *.record
 piaware.reception.*
 aircraft-tracker-outputs/
+
+# Tile cache, runtime files, backups, and temporary images
+/tile_cache/
+/tile_cache_backup*/
+/tile_cache_backup_*/
+/tile_cache_backup_2025*/
+/tile_cache_backup_*/
+/tile_cache_backup_20251204*/
+/html-archive/
+/runtime/
+/tmp_*.png
+tmp_*.png
+tmp_upstream_*.png
+tmp_vfr_tile_*.png
+tmp_vfr_tile_after*.png
+TILE_PROXY_DOCUMENTATION.md
