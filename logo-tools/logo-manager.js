@@ -14,6 +14,7 @@
  *   node logo-manager.js analyze          # Analyze shipping companies
  *   node logo-manager.js download         # Download all missing logos
  *   node logo-manager.js download --check-s3  # Only download missing S3 files
+ *   node logo-manager.js download --airlines=AAL,DAL # Only download for specific airlines
  *   node logo-manager.js report           # Generate logo coverage report
  *   node logo-manager.js clean            # Clean up temporary files
  */
@@ -36,7 +37,7 @@ const CONFIG = {
     },
     bucket: 'aircraft-data',
     dbPath: path.join(__dirname, '..', 'airline_database.json'),
-    sources: ['flightaware_logos', 'radarbox_logos', 'custom_logos', 'stock_logos', 'manufacturers', 'clearbit']
+    sources: ['fr24_banners', 'flightaware_logos', 'radarbox_logos', 'custom_logos', 'stock_logos', 'manufacturers', 'clearbit']
 };
 
 // Initialize S3 client
@@ -197,9 +198,12 @@ async function checkLogoExistsInS3(code) {
 async function downloadLogoFromGitHub(code, source) {
     try {
         const url = `https://raw.githubusercontent.com/Jxck-S/airline-logos/main/${source}/${code}.png`;
+        console.log(`Attempting to download logo from: ${url}`);
         const response = await axios.get(url, { responseType: 'arraybuffer' });
+        console.log(`Successfully downloaded logo for ${code} from ${source}`);
         return Buffer.from(response.data);
     } catch (error) {
+        console.error(`Failed to download logo for ${code} from ${source}: ${error.message}`);
         return null;
     }
 }
@@ -373,7 +377,9 @@ async function uploadLogoToS3(code, logoBuffer) {
             Body: logoBuffer,
             ContentType: 'image/png'
         });
+        console.log(`Uploading logo for ${code} to S3 bucket ${CONFIG.bucket}`);
         await s3.send(command);
+        console.log(`Successfully uploaded logo for ${code}`);
         return true;
     } catch (error) {
         console.error(`❌ Error uploading ${code}.png:`, error.message);
@@ -597,14 +603,18 @@ async function downloadLogosToFolder(db, folderPath = './logo-previews', limit =
 
     return { downloadedCount, folderPath };
 }
-async function downloadLogos(db, checkS3Only = false) {
-    const companiesWithoutLogos = Object.entries(db)
+async function downloadLogos(db, checkS3Only = false, airlines = null) {
+    let companiesWithoutLogos = Object.entries(db)
         .filter(([code, data]) => data.logo === null)
         .map(([code, data]) => ({
             code,
             name: data.name,
             isShipping: isShippingCompany(data.name) && isNotPassengerAirline(data.name)
         }));
+
+    if (airlines) {
+        companiesWithoutLogos = companiesWithoutLogos.filter(c => airlines.includes(c.code));
+    }
 
     console.log(`\n=== ${checkS3Only ? 'DOWNLOADING MISSING S3 LOGOS' : 'DOWNLOADING ALL LOGOS'} ===\n`);
     console.log(`Found ${companiesWithoutLogos.length} companies without logos`);
@@ -784,7 +794,9 @@ async function main() {
 
         case 'download':
             const checkS3 = process.argv.includes('--check-s3') || process.argv.includes('--only-missing');
-            await downloadLogos(db, checkS3);
+            const airlinesArg = process.argv.find(arg => arg.startsWith('--airlines='));
+            const airlines = airlinesArg ? airlinesArg.split('=')[1].split(',') : null;
+            await downloadLogos(db, checkS3, airlines);
             break;
 
         case 'preview':

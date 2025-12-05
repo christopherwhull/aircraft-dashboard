@@ -59,7 +59,7 @@ A full list of wiki pages for quick navigation:
 ## Key Components
 - Server: `server.js`, `lib/api-routes.js`
 - Config: `config.js` (single source of truth)
-- Tests: `__tests__/`, `tools/test_all.py`, `tools/test_s3_structure.py`
+- Tests: `__tests__/`, `tools/test-all.py`, `tools/test_s3_structure.py`
 - Data: Buckets `aircraft-data` (read) and `aircraft-data-new` (write)
 
 ## Recent Highlights (v2.0.0)

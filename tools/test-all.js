@@ -42,7 +42,7 @@ async function main() {
   if (pythonCmd) {
     const runTestsPyExit = await runCmd('Python integration tests (tools/run_tests.py)', pythonCmd, ['tools/run_tests.py', '-r', '2', '-d', '1'], { cwd: rootDir });
     failures += runTestsPyExit ? 1 : 0;
-    const allPyExit = await runCmd('Python tests (tools/test_all.py)', pythonCmd, ['tools/test_all.py', '-r', '1', '-d', '1'], { cwd: rootDir });
+    const allPyExit = await runCmd('Python tests (tools/test-all.py)', pythonCmd, ['tools/test-all.py', '-r', '1', '-d', '1'], { cwd: rootDir });
     failures += allPyExit ? 1 : 0;
     // Also run the endpoint-focused Python tests
     const endpointsExit = await runCmd('Python endpoint tests (tools/test_endpoints.py)', pythonCmd, ['tools/test_endpoints.py'], { cwd: rootDir });

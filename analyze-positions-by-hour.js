@@ -30,9 +30,19 @@ async function analyzePositions() {
         
         for (const window of windows) {
             try {
-                const data = await fetchJSON(`/api/heatmap?window=${window}`);
-                const cellsWithData = data.filter(c => c.count > 0).length;
-                const totalPos = data.reduce((sum, c) => sum + c.count, 0);
+                // Convert window to hours
+                let hours;
+                if (window === 'all') {
+                    hours = 7 * 24; // 7 days for "all"
+                } else if (window.endsWith('d')) {
+                    hours = parseInt(window.replace('d', '')) * 24;
+                } else {
+                    hours = parseInt(window.replace('h', ''));
+                }
+
+                const data = await fetchJSON(`/api/heatmap-data?hours=${hours}`);
+                const cellsWithData = data.grid.filter(c => c.count > 0).length;
+                const totalPos = data.grid.reduce((sum, c) => sum + c.count, 0);
                 results[window] = totalPos;
                 console.log(`  ${window.padEnd(5)}: ${totalPos.toLocaleString().padStart(8)} positions in ${cellsWithData} cells`);
             } catch (e) {

@@ -88,6 +88,7 @@ The script reads S3 credentials from `config.js` by default, which can be overri
 - `--read-only` - Disable all file writes
 - `--disable-s3` - Disable S3 uploads
 - `--test-run` - Run for a few iterations and exit
+- `--headless` - Suppress all console output for background service operation
 
 Run `python aircraft_tracker.py --help` for complete options.
 

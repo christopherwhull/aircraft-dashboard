@@ -93,6 +93,7 @@ function setupApiRoutes(app, s3, bucketName) {
         try {
             const allFiles = await listS3Files(s3, bucketName);
             const airlineDb = await getAirlineDatabase(s3, bucketName);
+
             const now = new Date();
             const cutoff = now.getTime() - (24 * 60 * 60 * 1000);
             const recentFiles = allFiles.filter(file => {
@@ -113,7 +114,8 @@ function setupApiRoutes(app, s3, bucketName) {
                     const aircraftType = record.Aircraft_type || record.t || 'N/A';
                     if (airlineCode.length === 3 && /^[A-Z]{3}$/.test(airlineCode)) {
                         if (!airlineStats[airlineCode]) {
-                            airlineStats[airlineCode] = { code: airlineCode, name: airlineDb[airlineCode] || 'Unknown', count: 0, aircraft: new Set(), types: {} };
+                            const dbEntry = airlineDb[airlineCode] || {};
+                            airlineStats[airlineCode] = { code: airlineCode, name: dbEntry.name || 'Unknown', logo: dbEntry.logo ? `http://localhost:3005${dbEntry.logo}` : null, count: 0, aircraft: new Set(), types: {} };
                         }
                         airlineStats[airlineCode].count++;
                         airlineStats[airlineCode].aircraft.add(record.ICAO);
@@ -126,6 +128,7 @@ function setupApiRoutes(app, s3, bucketName) {
                 const sortedTypes = Object.entries(data.types).sort(([, a], [, b]) => b - a).reduce((r, [k, v]) => ({ ...r, [k]: v }), {});
                 return { ...data, percentage: totalFlights > 0 ? ((data.count / totalFlights) * 100).toFixed(1) : '0', uniqueAircraft: data.aircraft.size, types: sortedTypes };
             }).sort((a, b) => b.count - a.count);
+
             res.json({ totalFlights, totalAirlines: airlines.length, airlines, dataSource: `S3 data from the last 24 hours (${recentFiles.length} files)` });
         } catch (error) {
             console.error('Error computing airline stats:', error);

@@ -46,7 +46,7 @@ This directory contains all the utility scripts and tools for the AirSquawk proj
 - `check-latest-data.js` - Check latest data availability
 - `check_tracker_output.js` - Validate tracker output
 - `count-s3-records.js` - Count S3 records
-- `test_all.py` - Run all tests (Python)
+- `test-all.py` - Run all tests (Python)
 - `test-api-endpoints.js` - Test API endpoints
 - `test_endpoints.py` - Test endpoints (Python)
 - `test_aircraft_api.js` - Test aircraft API
@@ -116,7 +116,7 @@ npm run test:all
 This wrapper is implemented as `tools/test-all.js` and invokes the existing tests in sequence:
 - `npm test` (Jest unit tests)
 - `python tools/run_tests.py` (integration tests; will use `python3` or `python` if available)
-- Python (`tools/test_all.py`) on all platforms or `tools/run-tests.sh` on Unix if present
+- Python (`tools/test-all.py`) on all platforms or `tools/run-tests.sh` on Unix if present
 
 It returns an exit code of `0` if all test groups pass, otherwise non-zero and prints a summary.
 - `find_last_1200_squawk.js` - Find last squawk 1200
@@ -136,7 +136,7 @@ node tools/check_airline_stocks.js
 python tools/aircraft_tracker.py
 
 # Python tools
-python tools/test_all.py
+python tools/test-all.py
 ```
 
 ## Restart Workflow (AI Agent)

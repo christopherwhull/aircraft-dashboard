@@ -123,7 +123,7 @@ All graphs are now rendering properly:
 
 ```bash
 cd c:\Users\chris\aircraft-dashboard-new
-python tools/test_all.py
+python tools/test-all.py
 ```
 
 **Expected Output:**

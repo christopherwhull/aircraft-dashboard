@@ -610,6 +610,17 @@
             }
         }, 5 * 60 * 1000); // 5 minutes
 
+        // Update position age every second
+        setInterval(() => {
+            document.querySelectorAll('.position-age').forEach(el => {
+                const ts = el.dataset.timestamp;
+                if (ts) {
+                    const age = Math.round((Date.now() - Number(ts)) / 1000);
+                    el.textContent = `${age}s`;
+                }
+            });
+        }, 1000);
+
         // Deduplicate any leftover duplicate entries in layers control (cleans old client state)
         function dedupeLayersControl() {
             try {
@@ -671,8 +682,44 @@
         
         // Log when map zoom changes
         map.on('zoomend', () => {
-            // Future zoom-based logic can go here
+            try {
+                const zoom = map.getZoom();
+                const newSize = getIconSizeForZoom(zoom);
+
+                liveMarkers.forEach((marker, hex) => {
+                    try {
+                        const posData = marker._posData || {};
+                        const rot = iconRotationFromTrack(posData.track);
+                        
+                        // Recreate the icon with the new size.
+                        // We assume createAircraftIcon is the one to use.
+                        // If logo icons were used, this would need more complex logic
+                        // to decide which icon creation function to call.
+                        const newIcon = createAircraftIcon('#ff3300', newSize, rot);
+                        marker.setIcon(newIcon);
+                    } catch (e) {
+                        console.warn(`Failed to update icon size for marker ${hex}`, e);
+                    }
+                });
+            } catch (e) {
+                console.warn('Error during zoomend icon scaling:', e);
+            }
         });
+
+        // Helper to determine icon size based on zoom level
+        function getIconSizeForZoom(zoom) {
+            // Linear interpolation for smoother scaling.
+            // Zoom 6 -> 20px, Zoom 14 -> 52px. Min 12px, Max 60px.
+            const minZoom = 6, maxZoom = 14;
+            const minSize = 20, maxSize = 52;
+            
+            if (zoom <= minZoom) return minSize;
+            if (zoom >= maxZoom) return maxSize;
+
+            const factor = (zoom - minZoom) / (maxZoom - minZoom);
+            const size = minSize + factor * (maxSize - minSize);
+            return Math.round(size);
+        }
 
         // Helper: convert lon/lat to tile X/Y for WebMercator (z)
         function lonLatToTile(lon, lat, z) {
@@ -1480,7 +1527,7 @@
                                                         if (layer instanceof L.CircleMarker || (layer.options && layer.options.radius)) {
                                                         try { layer.bindTooltip(html, { direction: 'top', offset: [0, -8], sticky: true }); try { console.debug('Batch: bound tooltip on start/end for', lk); } catch (e) {} } catch (e) {}
                                                     } else if (layer instanceof L.Polyline) {
-                                                        try { layer.bindTooltip(html, { direction: 'center', sticky: true, offset: [0, 0] }); try { console.debug('Batch: bound tooltip on polyline for', lk); } catch (e) {} } catch (e) {}
+                                                        try { layer.bindTooltip(html, { direction: 'center', sticky: true, offset: [0, 0] }); console.debug('Batch: bound tooltip on polyline for', lk); } catch (e) {}
                                                     }
                                                 } catch (e) {}
                                             });
@@ -1580,7 +1627,9 @@
             const track = (trackVal !== '' && trackVal != null) ? trackVal : '';
             const lat = (p.lat || p.latitude || p.Lat) || '';
             const lon = (p.lon || p.longitude || p.Lon) || '';
-            const timeStr = p.timestamp ? (isNaN(Number(p.timestamp)) ? new Date(p.timestamp).toISOString() : new Date(Number(p.timestamp)).toISOString()) : '';
+            const timestamp = p.timestamp ? (isNaN(Number(p.timestamp)) ? new Date(p.timestamp).getTime() : Number(p.timestamp)) : null;
+            const age = timestamp ? Math.round((Date.now() - timestamp) / 1000) : '';
+
             return `
                 <div style="min-width:200px">
                     <strong>${(p.hex||'').toUpperCase()}${callsign ? ' — ' + callsign : ''}</strong>
@@ -1591,7 +1640,7 @@
                     <div>Speed: <em>${speed || '—'}</em></div>
                     <div>Track: <em>${track !== '' ? track + '°' : '—'}</em></div>
                     <div>Pos: <em>${lat ? (typeof lat === 'number' ? lat.toFixed(5) : lat) : '—'}, ${lon ? (typeof lon === 'number' ? lon.toFixed(5) : lon) : '—'}</em></div>
-                    <div>Seen: <em>${timeStr || '—'}</em></div>
+                    <div>Position Age: <em class="position-age" data-timestamp="${timestamp || ''}">${age !== '' ? age + 's' : '—'}</em></div>
                 </div>`;
         }
 
@@ -1735,17 +1784,16 @@
         // Create an aircraft SVG icon (color can be changed)
         function createAircraftIcon(color = '#ff3300', size = 20, rotation = 0) {
             const svg = `
-                <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24">
-                    <path d="M21 11.5c0-.28-.22-.5-.5-.5h-6.79L12 4.21 10.29 5.92 11.5 7.12 8.75 9.88 7.34 9.5c-.14-.03-.28-.02-.41.04L4 10.5c-.44.14-.75.55-.75 1v1c0 .45.31.86.75 1l2.93.84c.13.04.27.06.41.04l1.41-.38L11.5 16.9 10.29 18.1 12 19.79l1.71-1.71H21.5c.28 0 .5-.22.5-.5v-5.08z" fill="${color}" />
+                <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="${color}">
+                    <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
                 </svg>`;
             const html = `<div style="transform: rotate(${rotation}deg); width: ${size}px; height:${size}px; display:flex; align-items:center; justify-content:center">${svg}</div>`;
             return L.divIcon({ html, className: 'aircraft-icon', iconSize: [size, size], iconAnchor: [size/2, size/2] });
         }
 
-        // Compute icon rotation so the nose points 180 degrees from track
+        // Compute icon rotation so the nose points along the track
         function iconRotationFromTrack(track) {
-            const t = (typeof track === 'number' && !isNaN(track)) ? Number(track) : 0;
-            return (t + 180) % 360;
+            return (typeof track === 'number' && !isNaN(track)) ? Number(track) : 0;
         }
 
         // Create an aircraft logo icon (image) using known aircraft info.
@@ -1760,7 +1808,7 @@
             } catch (e) {}
             // Fallback to a small SVG if no image available
             const imgHtml = src ? `<img src="${src}" alt="aircraft" style="width:${size}px;height:${size}px;object-fit:contain;display:block;border-radius:2px;"/>` : `
-                <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24"><path d="M21 11.5c0-.28-.22-.5-.5-.5h-6.79L12 4.21 10.29 5.92 11.5 7.12 8.75 9.88 7.34 9.5c-.14-.03-.28-.02-.41.04L4 10.5c-.44.14-.75.55-.75 1v1c0 .45.31.86.75 1l2.93.84c.13.04.27.06.41.04l1.41-.38L11.5 16.9 10.29 18.1 12 19.79l1.71-1.71H21.5c.28 0 .5-.22.5-.5v-5.08z" fill="#ff3300"/></svg>`;
+                <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="#ff3300"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>`;
             const html = `<div style="transform: rotate(${rotation}deg); width: ${size}px; height:${size}px; display:flex; align-items:center; justify-content:center">${imgHtml}</div>`;
             return L.divIcon({ html, className: 'aircraft-logo-icon', iconSize: [size, size], iconAnchor: [size/2, size/2] });
         }
@@ -1924,8 +1972,14 @@
                         if (s) lastSquawk.set(hex, s);
                     } catch (e) {}
 
+                    const hasTrack = typeof p.track === 'number' && !isNaN(p.track);
+                    if (!hasTrack) {
+                        // Do not create a marker if there is no valid track, to avoid showing it pointed North.
+                        return;
+                    }
+
                     // Calculate rotation if heading/track is available
-                    const rot = (typeof p.track === 'number' && !isNaN(p.track)) ? p.track : (typeof p.heading === 'number' ? p.heading : 0);
+                    const rot = iconRotationFromTrack(p.track);
 
                     // If there's an existing marker, move it smoothly by setting its position and updating icon
                     if (liveMarkers.has(hex)) {
@@ -2056,7 +2110,9 @@
                     }
 
                     // Otherwise create new marker and add to layer
-                    const icon = createAircraftIcon('#ff3300', 20, rot || 0);
+                    const zoom = map.getZoom();
+                    const iconSize = getIconSizeForZoom(zoom);
+                    const icon = createAircraftIcon('#ff3300', iconSize, rot || 0);
                     const marker = L.marker([lat, lon], { icon, pane: 'livePane', zIndexOffset: 1000 });
 
                     // Tooltip shown on hover (richer HTML)
@@ -2125,12 +2181,8 @@
                                                     if (firstAlt !== null && lastAlt !== null) {
                                                         const delta = lastAlt - firstAlt;
                                                         const thresh = 50;
-                                                        if (delta > thresh) { color = 'green'; hasClimbDesc = true; }
-                                                        else if (delta < -thresh) { color = 'red'; hasClimbDesc = true; }
-                                                    }
-                                                    // If no climb/descent, highlight sharp angular changes in yellow
-                                                    if (!hasClimbDesc) {
-                                                        try { const ang = maxTrackAngularChange(points); if (ang > 5) color = 'yellow'; } catch (e) {}
+                                                        if (delta > thresh) color = 'green';
+                                                        else if (delta < -thresh) color = 'red';
                                                     }
                                                     const latlngs = densifyTrackPoints(points, 0.1);
                                                     const poly = L.polyline(latlngs, { color: color, weight: 3, opacity: 0.9, pane: 'livePane', interactive: false });

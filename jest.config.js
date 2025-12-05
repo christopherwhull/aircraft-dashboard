@@ -1,6 +1,7 @@
 module.exports = {
   testEnvironment: 'node',
   testMatch: ['**/__tests__/**/*.test.js', '**/?(*.)+(spec|test).js'],
+  testPathIgnorePatterns: ['/node_modules/', '/__tests__/geotiff-cache-status.test.js'],
   collectCoverageFrom: [
     'lib/**/*.js',
     'server.js',

@@ -27,6 +27,8 @@
     "services:status": "python tools/manage_services.py status",
     "test:all": "node tools/test-all.js",
     "test:leaflet": "node tools/leaflet-test.js",
+    "capture:screenshots": "node tools/capture-dashboard-screenshots.js",
+    "capture:screenshots:interactive": "node tools/capture-dashboard-screenshots.js --interactive",
     "enable-git-hooks": "git config core.hooksPath .githooks"
   },
   "devNotes": {
@@ -54,6 +56,7 @@
   },
   "devDependencies": {
     "jest": "^30.2.0",
+    "playwright": "^1.57.0",
     "supertest": "^7.1.4"
   }
 }

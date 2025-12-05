@@ -169,9 +169,16 @@ http://localhost:3002
 
 **Linux/Mac:**
 - Follow [LINUX_SETUP.md](LINUX_SETUP.md) for comprehensive setup guide
+- [SERVICES_SETUP.md](SERVICES_SETUP.md) for systemd service configuration
 - Includes systemd service, Docker, and manual startup options
 - Run: `npm run restart:unix` or `bash restart-server.sh`
 - For production, use systemd service: `sudo systemctl start aircraft-dashboard`
+
+**Raspberry Pi:**
+- Complete installation guide: [RASPBERRY_PI_SETUP.md](RASPBERRY_PI_SETUP.md)
+- [SERVICES_SETUP.md](SERVICES_SETUP.md) for systemd service configuration
+- Includes PiAware setup, MinIO configuration, and Raspberry Pi optimizations
+- Designed for ADS-B flight tracking with RTL-SDR hardware
 
 ## Configuration
 
@@ -253,6 +260,7 @@ Access console at: `http://localhost:9001`
    - In PowerShell: `chcp 65001` then `python aircraft_tracker.py`
    - Or set the environment for the session: ``$env:PYTHONIOENCODING='utf-8'`` then run the script
 - The script also supports a strict flag: `python aircraft_tracker.py --utf8-strict` — in strict mode the script will exit if the console cannot be configured for UTF-8. The default behavior is tolerant: unsupported characters are replaced so the script does not crash.
+- **Headless mode**: `python aircraft_tracker.py --headless` — suppresses all console output for running as a background service. All functionality remains the same, but no live display or status messages are printed.
 - **Cache**: Position cache status and statistics
 
 ### Time Controls
@@ -537,6 +545,8 @@ Christopher Hull
 
 - [CHANGELOG.md](CHANGELOG.md) - Version history and release notes
 - [CONFIGURATION.md](CONFIGURATION.md) - Detailed configuration guide
+- [SERVICES_SETUP.md](SERVICES_SETUP.md) - Node.js and Python tracker systemd services
+- [RASPBERRY_PI_SETUP.md](RASPBERRY_PI_SETUP.md) - Complete Raspberry Pi installation guide
 - [MINIO_SETUP.md](MINIO_SETUP.md) - MinIO S3 storage installation for all platforms
 - [LINUX_SETUP.md](LINUX_SETUP.md) - Linux/Mac installation and systemd setup
 - [AIRCRAFT_TRACKER.md](AIRCRAFT_TRACKER.md) - Python tracker script documentation

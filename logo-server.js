@@ -10,22 +10,39 @@ const s3 = new S3Client({
 });
 
 const BUCKET_NAME = config.buckets.writeBucket;
-const LOGO_S3_KEY = 'logos/airsquak.jpg';
 
 const server = http.createServer(async (req, res) => {
-    if (req.url === '/api/logo') {
+    const urlParts = req.url.split('/');
+    if (urlParts.length === 4 && urlParts[1] === 'api' && urlParts[2] === 'v1logos') {
+        const icao = urlParts[3];
+        const logoS3Key = `logos/${icao}.png`;
+
         try {
             const command = new GetObjectCommand({
                 Bucket: BUCKET_NAME,
-                Key: LOGO_S3_KEY,
+                Key: logoS3Key,
             });
             const { Body, ContentType } = await s3.send(command);
-            res.setHeader('Content-Type', ContentType || 'image/jpeg');
+            res.setHeader('Content-Type', ContentType || 'image/png');
             Body.pipe(res);
         } catch (error) {
-            console.error('Error serving logo:', error);
-            res.statusCode = 500;
-            res.end('Error serving logo');
+            console.error(`Error serving logo for ${icao}:`, error);
+
+            // If the logo is not found, serve a default image
+            try {
+                const defaultLogoKey = 'logos/default.png';
+                const defaultLogoCommand = new GetObjectCommand({
+                    Bucket: BUCKET_NAME,
+                    Key: defaultLogoKey,
+                });
+                const { Body: defaultBody, ContentType: defaultContentType } = await s3.send(defaultLogoCommand);
+                res.setHeader('Content-Type', defaultContentType || 'image/png');
+                defaultBody.pipe(res);
+            } catch (defaultError) {
+                console.error('Error serving default logo:', defaultError);
+                res.statusCode = 500;
+                res.end('Error serving logo');
+            }
         }
     } else {
         res.statusCode = 404;

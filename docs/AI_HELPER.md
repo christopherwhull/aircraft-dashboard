@@ -47,7 +47,7 @@ npm start
 npm test
 
 # Run Python test suite (integration & S3 diagnostics)
-python tools/test_all.py
+python tools/test-all.py
 
 # S3 structure/dates/gaps checks (UTC output)
 python tools/test_s3_structure.py --structure-only
@@ -128,7 +128,7 @@ Example:
 
 ## Contact Points
 - Main docs: `README.md`, `CONFIGURATION.md`, `LINUX_SETUP.md`, `MINIO_SETUP.md`
-- Tests: `__tests__/`, `tools/test_all.py`, `tools/test_s3_structure.py`
+- Tests: `__tests__/`, `tools/test-all.py`, `tools/test_s3_structure.py`
 - Server: `server.js`, `lib/api-routes.js`, `config.js`
 - S3: Buckets `aircraft-data` (read) and `aircraft-data-new` (write)
 

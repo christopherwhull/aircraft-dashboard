@@ -1704,24 +1704,7 @@
                 const timeWindow = document.getElementById('time-window').value;
                 const startTime = Date.now();
 
-                // Map UI window values to the backend hours parameter used by /api/heatmap-data
-                function windowToHours(w) {
-                    if (!w) return 24;
-                    if (w === 'all') return 744; // default to ~31 days for "all"
-                    if (w.endsWith('d')) {
-                        const days = parseInt(w.replace('d',''), 10);
-                        return isNaN(days) ? 24 : days * 24;
-                    }
-                    if (w.endsWith('h')) {
-                        const hrs = parseInt(w.replace('h',''), 10);
-                        return isNaN(hrs) ? 24 : hrs;
-                    }
-                    return 24;
-                }
-
-                const hours = windowToHours(timeWindow);
-                const url = `/api/heatmap-data?hours=${hours}`;
-                console.log(`Loading grid data with time window: ${timeWindow} -> ${hours} hours; fetching ${url}`);
+                console.log(`Loading grid data with time window: ${timeWindow}; fetching ${url}`);
 
                 const response = await fetch(url);
                 if (!response.ok) throw new Error(`API error: ${response.status}`);

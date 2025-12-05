@@ -4,7 +4,7 @@ const http = require('http');
 const express = require('express');
 const socketIo = require('socket.io');
 const axios = require('axios');
-const { S3Client, PutObjectCommand, HeadBucketCommand, CreateBucketCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, HeadBucketCommand, CreateBucketCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 
 const config = require('./config');
 const { getAirlineDatabase, getAircraftTypesDatabase } = require('./lib/databases');
@@ -296,7 +296,18 @@ app.get('/runtime-config.js', (req, res) => {
         const runtime = {
             allowInternetLayers: !!(config.ui && config.ui.allowInternetLayers),
             arcgisBase: arcgisBase
+        };
+        res.setHeader('Content-Type', 'application/javascript');
+        res.send(`window.runtimeConfig = ${JSON.stringify(runtime)};`);
+    } catch (e) {
+        logger.error('Error generating runtime config:', e);
+        res.status(500).send('// Error generating runtime config');
+    }
+});
 app.use(express.static(path.join(__dirname, 'public')));
+app.get('/heatmap-leaflet', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'heatmap-leaflet.html'));
+});
 app.use(express.json());
 
 // --- Heatmap Viewer Routes ---
@@ -672,6 +683,22 @@ async function buildHourlyPositionsFromS3() {
                         logger.info(`Saved hourly position file: ${hourlyKey} (${summary.total_positions} positions, ${summary.unique_aircraft} aircraft) [was: ${previousPositionCount} positions, ${previousAircraftCount} aircraft]`);
                     } else {
                         logger.info(`Saved hourly position file: ${hourlyKey} (${summary.total_positions} positions, ${summary.unique_aircraft} aircraft)`);
+                    }
+
+                    // If the hour is older than 48 hours, delete the minute files
+                    if (now - hourStart > 48 * 60 * 60 * 1000) {
+                        logger.info(`Deleting ${hourMinuteFiles.length} minute files for hour ${year}${month}${day}_${hour}00`);
+                        for (const file of hourMinuteFiles) {
+                            try {
+                                const deleteCommand = new DeleteObjectCommand({
+                                    Bucket: file.bucket,
+                                    Key: file.Key
+                                });
+                                await s3.send(deleteCommand);
+                            } catch (deleteErr) {
+                                logger.error(`Failed to delete minute file ${file.Key}:`, deleteErr);
+                            }
+                        }
                     }
                 } catch (err) {
                     logger.error(`Failed to save hourly position file ${hourlyKey}:`, err);
@@ -1535,6 +1562,28 @@ async function ensureBucketsExist() {
     logger.info('All S3 buckets verified and ready');
 }
 
+async function deleteOldMinuteFiles() {
+    logger.info('Deleting minute files older than 30 hours...');
+    const now = Date.now();
+    const cutoff = now - (30 * 60 * 60 * 1000);
+    const files = await listS3Files(s3, WRITE_BUCKET_NAME, 'data/piaware_aircraft_log');
+
+    for (const file of files) {
+        if (new Date(file.LastModified).getTime() < cutoff) {
+            try {
+                const deleteCommand = new DeleteObjectCommand({
+                    Bucket: WRITE_BUCKET_NAME,
+                    Key: file.Key
+                });
+                await s3.send(deleteCommand);
+                logger.info(`Deleted old minute file: ${file.Key}`);
+            } catch (err) {
+                logger.error(`Failed to delete minute file ${file.Key}:`, err);
+            }
+        }
+    }
+}
+
 // --- Initialization ---
 async function initialize() {
     await loadState();
@@ -1652,18 +1701,18 @@ async function initialize() {
     setInterval(buildFlightsFromS3, config.backgroundJobs.buildFlightsInterval);
     setInterval(buildHourlyPositionsFromS3, config.backgroundJobs.buildHourlyPositionsInterval);
     setInterval(() => remakeHourlyRollup(s3, BUCKET_NAME, WRITE_BUCKET_NAME, globalCache), config.backgroundJobs.remakeHourlyRollupInterval);
+    setInterval(deleteOldMinuteFiles, 5 * 60 * 1000); // Run every 5 minutes
     
     // Initial builds
     setTimeout(() => buildFlightsFromS3(), config.initialJobDelays.buildFlightsDelay);
     setTimeout(() => buildHourlyPositionsFromS3(), config.initialJobDelays.buildHourlyPositionsDelay);
     setTimeout(() => remakeHourlyRollup(s3, BUCKET_NAME, WRITE_BUCKET_NAME, globalCache), config.initialJobDelays.remakeHourlyRollupDelay);
+
+    io.on('connection', (socket) => {
+        logger.info('Client connected');
+        socket.on('disconnect', () => logger.info('Client disconnected'));
+    });
+
+    server.listen(PORT, () => logger.info(`Server on port ${PORT}`));
 }
-
 initialize();
-
-io.on('connection', (socket) => {
-    logger.info('Client connected');
-    socket.on('disconnect', () => logger.info('Client disconnected'));
-});
-
-server.listen(PORT, () => logger.info(`Server on port ${PORT}`));

@@ -2519,6 +2519,8 @@ Benefits:
                         help='Run for a few iterations and exit (for testing purposes)')
     parser.add_argument('--read-only', action='store_true',
                         help='Run in read-only mode, disabling all local and S3 file writes')
+    parser.add_argument('--headless', action='store_true',
+                        help='Run in headless mode, suppressing all console output (useful for background services)')
     parser.add_argument('--allow-minio-start', action='store_true', dest='allow_minio_start',
                         help='Allow this script to attempt to start MinIO automatically (disabled by default). Use with caution.')
     
@@ -2699,11 +2701,12 @@ Benefits:
     # Set tracker start time
     tracker_start_time = time.time()
     
-    print("\n\033[96mAircraft Tracker Started\033[0m")
-    print(f"Monitoring: {piaware_url}")
-    print(f"Receiver: {receiver_version} @ {receiver_lat:.2f}, {receiver_lon:.2f}")
-    print("Timeout: 30 seconds")
-    print("\033[90mPress Ctrl+C to stop\033[0m\n")
+    if not getattr(args, 'headless', False):
+        print("\n\033[96mAircraft Tracker Started\033[0m")
+        print(f"Monitoring: {piaware_url}")
+        print(f"Receiver: {receiver_version} @ {receiver_lat:.2f}, {receiver_lon:.2f}")
+        print("Timeout: 30 seconds")
+        print("\033[90mPress Ctrl+C to stop\033[0m\n")
     
     iteration = 0
     
@@ -2796,58 +2799,61 @@ Benefits:
                 
                 # Report every iteration (1 second)
                 if iteration % REPORT_INTERVAL == 0:
-                    # Clear screen
-                    os.system('cls' if os.name == 'nt' else 'clear')
+                    # Only display console output if not in headless mode
+                    if not getattr(args, 'headless', False):
+                        # Clear screen
+                        os.system('cls' if os.name == 'nt' else 'clear')
                     
                     result = get_longest_visible_aircraft()
                     result_with_type = get_longest_visible_with_type()
                     result_slant = get_longest_slant_range()
                     
-                    print("\033[96m=" * 70)
-                    print("Aircraft Tracker - Live View")
-                    print(f"Monitoring: {piaware_url}")
-                    print(f"Update: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
-                    print(f"S3: {s3_bucket_name} | Uploads: {s3_upload_count} | Last: {last_uploaded_file}")
-                    print("=" * 70 + "\033[0m\n")
-                    
-                    print(f"Currently tracking: \033[93m{len(aircraft_tracking)}\033[0m aircraft")
-                    print(f"Reception records: \033[95m{len(sector_altitude_records)}\033[0m sector+altitude combinations")
-                    print(f"Position reports (24h): \033[96m{position_reports_24h:,}\033[0m")
-                    print(f"Running position total: \033[96m{running_position_count:,}\033[0m")
-                    print()
-                    
-                    # Real-time position statistics (this run only)
-                    runtime = current_time - tracker_start_time if tracker_start_time > 0 else 0
-                    positions_1min = len(positions_last_minute)
-                    positions_10min = len(positions_last_10min)
-                    positions_1hour = len(positions_last_hour)
-                    positions_1day = len(positions_last_day)
-                    
-                    # Calculate rates (positions per minute)
-                    rate_1min = positions_1min  # Already per minute
-                    rate_10min = positions_10min / 10.0 if positions_10min > 0 else 0
-                    rate_1hour = positions_1hour / 60.0 if positions_1hour > 0 else 0
-                    rate_1day = positions_1day / 1440.0 if positions_1day > 0 else 0
-                    
-                    print(f"\033[96m┌─ Position Statistics (This Run) ────────────────────────┐\033[0m")
-                    print(f"\033[96m│\033[0m Runtime:          {int(runtime//60)}m {int(runtime%60)}s{' '*(35)} \033[96m│\033[0m")
-                    print(f"\033[96m│\033[0m Last minute:      {positions_1min:>5} positions  ({rate_1min:>6.1f}/min){' '*(10)} \033[96m│\033[0m")
-                    print(f"\033[96m│\033[0m Last 10 minutes:  {positions_10min:>5} positions  ({rate_10min:>6.1f}/min){' '*(10)} \033[96m│\033[0m")
-                    print(f"\033[96m│\033[0m Last hour:        {positions_1hour:>5} positions  ({rate_1hour:>6.1f}/min){' '*(10)} \033[96m│\033[0m")
-                    print(f"\033[96m│\033[0m Last day:         {positions_1day:>5} positions  ({rate_1day:>6.1f}/min){' '*(10)} \033[96m│\033[0m")
-                    print(f"\033[96m└─────────────────────────────────────────────────────────┘\033[0m")
-                    print()
-                    
-                    # Display last S3 upload time
-                    if s3_upload_enabled and last_s3_upload_time > 0:
-                        last_upload_dt = datetime.fromtimestamp(last_s3_upload_time, tz=timezone.utc)
-                        time_since_upload = current_time - last_s3_upload_time
-                        print(f"Last S3 upload: \033[94m{last_upload_dt.strftime('%Y-%m-%d %H:%M:%S UTC')}\033[0m ({int(time_since_upload)}s ago)")
-                    elif s3_upload_enabled:
-                        print(f"Last S3 upload: \033[90mNever\033[0m")
-                    
-                    print(f"Total log size: \033[96m{total_log_size:.2f} MB\033[0m")
-                    print()
+                    if not getattr(args, 'headless', False):
+                        print("\033[96m=" * 70)
+                        print("Aircraft Tracker - Live View")
+                        print(f"Monitoring: {piaware_url}")
+                        print(f"Update: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                        print(f"S3: {s3_bucket_name} | Uploads: {s3_upload_count} | Last: {last_uploaded_file}")
+                        print("=" * 70 + "\033[0m\n")
+                        
+                        print(f"Currently tracking: \033[93m{len(aircraft_tracking)}\033[0m aircraft")
+                        print(f"Reception records: \033[95m{len(sector_altitude_records)}\033[0m sector+altitude combinations")
+                        print(f"Position reports (24h): \033[96m{position_reports_24h:,}\033[0m")
+                        print(f"Running position total: \033[96m{running_position_count:,}\033[0m")
+                        print()
+                        
+                        # Real-time position statistics (this run only)
+                        runtime = current_time - tracker_start_time if tracker_start_time > 0 else 0
+                        positions_1min = len(positions_last_minute)
+                        positions_10min = len(positions_last_10min)
+                        positions_1hour = len(positions_last_hour)
+                        positions_1day = len(positions_last_day)
+                        
+                        # Calculate rates (positions per minute)
+                        rate_1min = positions_1min  # Already per minute
+                        rate_10min = positions_10min / 10.0 if positions_10min > 0 else 0
+                        rate_1hour = positions_1hour / 60.0 if positions_1hour > 0 else 0
+                        rate_1day = positions_1day / 1440.0 if positions_1day > 0 else 0
+                        
+                        print(f"\033[96m┌─ Position Statistics (This Run) ────────────────────────┐\033[0m")
+                        print(f"\033[96m│\033[0m Runtime:          {int(runtime//60)}m {int(runtime%60)}s{' '*(35)} \033[96m│\033[0m")
+                        print(f"\033[96m│\033[0m Last minute:      {positions_1min:>5} positions  ({rate_1min:>6.1f}/min){' '*(10)} \033[96m│\033[0m")
+                        print(f"\033[96m│\033[0m Last 10 minutes:  {positions_10min:>5} positions  ({rate_10min:>6.1f}/min){' '*(10)} \033[96m│\033[0m")
+                        print(f"\033[96m│\033[0m Last hour:        {positions_1hour:>5} positions  ({rate_1hour:>6.1f}/min){' '*(10)} \033[96m│\033[0m")
+                        print(f"\033[96m│\033[0m Last day:         {positions_1day:>5} positions  ({rate_1day:>6.1f}/min){' '*(10)} \033[96m│\033[0m")
+                        print(f"\033[96m└─────────────────────────────────────────────────────────┘\033[0m")
+                        print()
+                        
+                        # Display last S3 upload time
+                        if s3_upload_enabled and last_s3_upload_time > 0:
+                            last_upload_dt = datetime.fromtimestamp(last_s3_upload_time, tz=timezone.utc)
+                            time_since_upload = current_time - last_s3_upload_time
+                            print(f"Last S3 upload: \033[94m{last_upload_dt.strftime('%Y-%m-%d %H:%M:%S UTC')}\033[0m ({int(time_since_upload)}s ago)")
+                        elif s3_upload_enabled:
+                            print(f"Last S3 upload: \033[90mNever\033[0m")
+                        
+                        print(f"Total log size: \033[96m{total_log_size:.2f} MB\033[0m")
+                        print()
                     
                     if result:
                         aircraft_info = result['aircraft']
@@ -2860,25 +2866,28 @@ Benefits:
                         seconds = total_seconds % 60
                         duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
                         
-                        print("\033[92m┌─ Longest Visible Aircraft ─────────────────────────────────────┐\033[0m")
-                        print(f"\033[92m│\033[0m Hex:          {aircraft_info['hex']:<48} \033[92m│\033[0m")
-                        print(f"\033[92m│\033[0m Callsign:     {str(aircraft_info['flight']):<48} \033[92m│\033[0m")
-                        print(f"\033[92m│\033[0m Airline:      {get_airline_from_callsign(str(aircraft_info['flight'])):<48} \033[92m│\033[0m")
-                        print(f"\033[92m│\033[0m Registration: {str(aircraft_info.get('registration', 'N/A')):<48} \033[92m│\033[0m")
-                        print(f"\033[92m│\033[0m Type:         {str(aircraft_info.get('type', 'N/A')):<48} \033[92m│\033[0m")
-                        print(f"\033[92m│\033[0m Squawk:       {str(aircraft_info['squawk']):<48} \033[92m│\033[0m")
-                        
-                        alt_str = f"{aircraft_info['alt_baro']} ft" if aircraft_info['alt_baro'] != 'N/A' else "N/A"
-                        print(f"\033[92m│\033[0m Altitude:     {alt_str:<48} \033[92m│\033[0m")
-                        
-                        spd_str = f"{aircraft_info['gs']} kt" if aircraft_info['gs'] != 'N/A' else "N/A"
-                        print(f"\033[92m│\033[0m Speed:        {spd_str:<48} \033[92m│\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print("\033[92m┌─ Longest Visible Aircraft ─────────────────────────────────────┐\033[0m")
+                            print(f"\033[92m│\033[0m Hex:          {aircraft_info['hex']:<48} \033[92m│\033[0m")
+                            print(f"\033[92m│\033[0m Callsign:     {str(aircraft_info['flight']):<48} \033[92m│\033[0m")
+                            print(f"\033[92m│\033[0m Airline:      {get_airline_from_callsign(str(aircraft_info['flight'])):<48} \033[92m│\033[0m")
+                            print(f"\033[92m│\033[0m Registration: {str(aircraft_info.get('registration', 'N/A')):<48} \033[92m│\033[0m")
+                            print(f"\033[92m│\033[0m Type:         {str(aircraft_info.get('type', 'N/A')):<48} \033[92m│\033[0m")
+                            print(f"\033[92m│\033[0m Squawk:       {str(aircraft_info['squawk']):<48} \033[92m│\033[0m")
+                            
+                            alt_str = f"{aircraft_info['alt_baro']} ft" if aircraft_info['alt_baro'] != 'N/A' else "N/A"
+                            print(f"\033[92m│\033[0m Altitude:     {alt_str:<48} \033[92m│\033[0m")
+                            
+                            spd_str = f"{aircraft_info['gs']} kt" if aircraft_info['gs'] != 'N/A' else "N/A"
+                            print(f"\033[92m│\033[0m Speed:        {spd_str:<48} \033[92m│\033[0m")
                         
                         vs_str = f"{aircraft_info['baro_rate']} ft/min" if aircraft_info['baro_rate'] != 'N/A' else "N/A"
-                        print(f"\033[92m│\033[0m Vertical Spd: {vs_str:<48} \033[92m│\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print(f"\033[92m│\033[0m Vertical Spd: {vs_str:<48} \033[92m│\033[0m")
                         
                         hdg_str = f"{aircraft_info['track']}°" if aircraft_info['track'] != 'N/A' else "N/A"
-                        print(f"\033[92m│\033[0m Heading:      {hdg_str:<48} \033[92m│\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print(f"\033[92m│\033[0m Heading:      {hdg_str:<48} \033[92m│\033[0m")
                         
                         # Calculate bearing if we have coordinates
                         bearing_str = "N/A"
@@ -2890,7 +2899,8 @@ Benefits:
                                 bearing_str = f"{bearing:.1f}°"
                             except Exception:
                                 pass
-                        print(f"\033[92m│\033[0m Bearing:      {bearing_str:<48} \033[92m│\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print(f"\033[92m│\033[0m Bearing:      {bearing_str:<48} \033[92m│\033[0m")
 
                         # Display Lat/Lon (only if both are valid)
                         if is_valid_position(aircraft_info.get('lat'), aircraft_info.get('lon')):
@@ -2899,30 +2909,36 @@ Benefits:
                         else:
                             lat_str = 'N/A'
                             lon_str = 'N/A'
-                        print(f"\033[92m│\033[0m Latitude:     {lat_str:<48} \033[92m│\033[0m")
-                        print(f"\033[92m│\033[0m Longitude:    {lon_str:<48} \033[92m│\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print(f"\033[92m│\033[0m Latitude:     {lat_str:<48} \033[92m│\033[0m")
+                            print(f"\033[92m│\033[0m Longitude:    {lon_str:<48} \033[92m│\033[0m")
                         
                         # Display both positional and slant distance
                         if aircraft_info['r_dst'] != 'N/A':
                             pos_dist = aircraft_info['r_dst']
-                            print(f"\033[92m│\033[0m Pos Distance: {pos_dist} nm{' ':<38} \033[92m│\033[0m")
+                            if not getattr(args, 'headless', False):
+                                print(f"\033[92m│\033[0m Pos Distance: {pos_dist} nm{' ':<38} \033[92m│\033[0m")
                             # Calculate slant distance if we have altitude
                             if aircraft_info.get('alt_baro') != 'N/A':
                                 try:
                                     slant_dist = calculate_slant_distance(pos_dist, aircraft_info['alt_baro'])
-                                    print(f"\033[92m│\033[0m Slant Dist:   {slant_dist:.2f} nm{' ':<38} \033[92m│\033[0m")
+                                    if not getattr(args, 'headless', False):
+                                        print(f"\033[92m│\033[0m Slant Dist:   {slant_dist:.2f} nm{' ':<38} \033[92m│\033[0m")
                                 except:
                                     pass
                         
-                        print(f"\033[92m│\033[0m Messages:     {str(aircraft_info['messages']):<48} \033[92m│\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print(f"\033[92m│\033[0m Messages:     {str(aircraft_info['messages']):<48} \033[92m│\033[0m")
                         
                         age_str = f"{aircraft_info['seen']}s" if aircraft_info['seen'] != 'N/A' else "N/A"
-                        print(f"\033[92m│\033[0m Last Age:     {age_str:<48} \033[92m│\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print(f"\033[92m│\033[0m Last Age:     {age_str:<48} \033[92m│\033[0m")
                         
-                        print(f"\033[92m│\033[0m First Seen:   {aircraft_info['first_seen'].strftime('%Y-%m-%d %H:%M:%S UTC'):<48} \033[92m│\033[0m")
-                        print(f"\033[92m│\033[0m Last Seen:    {aircraft_info['last_seen'].strftime('%Y-%m-%d %H:%M:%S UTC'):<48} \033[92m│\033[0m")
-                        print(f"\033[92m│\033[0m Duration:     {duration_str}{' ':<40} \033[92m│\033[0m")
-                        print("\033[92m└────────────────────────────────────────────────────────────────┘\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print(f"\033[92m│\033[0m First Seen:   {aircraft_info['first_seen'].strftime('%Y-%m-%d %H:%M:%S UTC'):<48} \033[92m│\033[0m")
+                            print(f"\033[92m│\033[0m Last Seen:    {aircraft_info['last_seen'].strftime('%Y-%m-%d %H:%M:%S UTC'):<48} \033[92m│\033[0m")
+                            print(f"\033[92m│\033[0m Duration:     {duration_str}{' ':<40} \033[92m│\033[0m")
+                            print("\033[92m└────────────────────────────────────────────────────────────────┘\033[0m")
                     
                     # Display longest visible aircraft WITH known type
                     if result_with_type:
@@ -2936,26 +2952,31 @@ Benefits:
                         seconds2 = total_seconds2 % 60
                         duration_str2 = f"{hours2:02d}:{minutes2:02d}:{seconds2:02d}"
                         
-                        print()
-                        print("\033[94m┌─ Longest Visible Aircraft (With Type) ────────────────────────┐\033[0m")
-                        print(f"\033[94m│\033[0m Hex:          {aircraft_info2['hex']:<48} \033[94m│\033[0m")
-                        print(f"\033[94m│\033[0m Callsign:     {str(aircraft_info2['flight']):<48} \033[94m│\033[0m")
-                        print(f"\033[94m│\033[0m Airline:      {get_airline_from_callsign(str(aircraft_info2['flight'])):<48} \033[94m│\033[0m")
-                        print(f"\033[94m│\033[0m Registration: {str(aircraft_info2.get('registration', 'N/A')):<48} \033[94m│\033[0m")
-                        print(f"\033[94m│\033[0m Type:         {str(aircraft_info2.get('type', 'N/A')):<48} \033[94m│\033[0m")
-                        print(f"\033[94m│\033[0m Squawk:       {str(aircraft_info2['squawk']):<48} \033[94m│\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print()
+                            print("\033[94m┌─ Longest Visible Aircraft (With Type) ────────────────────────┐\033[0m")
+                            print(f"\033[94m│\033[0m Hex:          {aircraft_info2['hex']:<48} \033[94m│\033[0m")
+                            print(f"\033[94m│\033[0m Callsign:     {str(aircraft_info2['flight']):<48} \033[94m│\033[0m")
+                            print(f"\033[94m│\033[0m Airline:      {get_airline_from_callsign(str(aircraft_info2['flight'])):<48} \033[94m│\033[0m")
+                            print(f"\033[94m│\033[0m Registration: {str(aircraft_info2.get('registration', 'N/A')):<48} \033[94m│\033[0m")
+                            print(f"\033[94m│\033[0m Type:         {str(aircraft_info2.get('type', 'N/A')):<48} \033[94m│\033[0m")
+                            print(f"\033[94m│\033[0m Squawk:       {str(aircraft_info2['squawk']):<48} \033[94m│\033[0m")
                         
                         alt_str2 = f"{aircraft_info2['alt_baro']} ft" if aircraft_info2['alt_baro'] != 'N/A' else "N/A"
-                        print(f"\033[94m│\033[0m Altitude:     {alt_str2:<48} \033[94m│\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print(f"\033[94m│\033[0m Altitude:     {alt_str2:<48} \033[94m│\033[0m")
                         
                         spd_str2 = f"{aircraft_info2['gs']} kt" if aircraft_info2['gs'] != 'N/A' else "N/A"
-                        print(f"\033[94m│\033[0m Speed:        {spd_str2:<48} \033[94m│\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print(f"\033[94m│\033[0m Speed:        {spd_str2:<48} \033[94m│\033[0m")
                         
                         vs_str2 = f"{aircraft_info2['baro_rate']} ft/min" if aircraft_info2['baro_rate'] != 'N/A' else "N/A"
-                        print(f"\033[94m│\033[0m Vertical Spd: {vs_str2:<48} \033[94m│\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print(f"\033[94m│\033[0m Vertical Spd: {vs_str2:<48} \033[94m│\033[0m")
                         
                         hdg_str2 = f"{aircraft_info2['track']}°" if aircraft_info2['track'] != 'N/A' else "N/A"
-                        print(f"\033[94m│\033[0m Heading:      {hdg_str2:<48} \033[94m│\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print(f"\033[94m│\033[0m Heading:      {hdg_str2:<48} \033[94m│\033[0m")
                         
                         # Calculate bearing if we have coordinates
                         bearing_str2 = "N/A"
@@ -2967,7 +2988,8 @@ Benefits:
                                 bearing_str2 = f"{bearing2:.1f}°"
                             except Exception:
                                 pass
-                        print(f"\033[94m│\033[0m Bearing:      {bearing_str2:<48} \033[94m│\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print(f"\033[94m│\033[0m Bearing:      {bearing_str2:<48} \033[94m│\033[0m")
 
                         # Display Lat/Lon (only if both are valid)
                         if is_valid_position(aircraft_info2.get('lat'), aircraft_info2.get('lon')):
@@ -2976,40 +2998,48 @@ Benefits:
                         else:
                             lat_str2 = 'N/A'
                             lon_str2 = 'N/A'
-                        print(f"\033[94m│\033[0m Latitude:     {lat_str2:<48} \033[94m│\033[0m")
-                        print(f"\033[94m│\033[0m Longitude:    {lon_str2:<48} \033[94m│\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print(f"\033[94m│\033[0m Latitude:     {lat_str2:<48} \033[94m│\033[0m")
+                            print(f"\033[94m│\033[0m Longitude:    {lon_str2:<48} \033[94m│\033[0m")
                         
                         # Display both positional and slant distance
                         if aircraft_info2['r_dst'] != 'N/A':
                             pos_dist2 = aircraft_info2['r_dst']
-                            print(f"\033[94m│\033[0m Pos Distance: {pos_dist2} nm{' ':<38} \033[94m│\033[0m")
+                            if not getattr(args, 'headless', False):
+                                print(f"\033[94m│\033[0m Pos Distance: {pos_dist2} nm{' ':<38} \033[94m│\033[0m")
                             # Calculate slant distance if we have altitude
                             if aircraft_info2.get('alt_baro') != 'N/A':
                                 try:
                                     slant_dist2 = calculate_slant_distance(pos_dist2, aircraft_info2['alt_baro'])
-                                    print(f"\033[94m│\033[0m Slant Dist:   {slant_dist2:.2f} nm{' ':<38} \033[94m│\033[0m")
+                                    if not getattr(args, 'headless', False):
+                                        print(f"\033[94m│\033[0m Slant Dist:   {slant_dist2:.2f} nm{' ':<38} \033[94m│\033[0m")
                                 except:
                                     pass
                         
-                        print(f"\033[94m│\033[0m Messages:     {str(aircraft_info2['messages']):<48} \033[94m│\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print(f"\033[94m│\033[0m Messages:     {str(aircraft_info2['messages']):<48} \033[94m│\033[0m")
                         
                         age_str2 = f"{aircraft_info2['seen']}s" if aircraft_info2['seen'] != 'N/A' else "N/A"
-                        print(f"\033[94m│\033[0m Last Age:     {age_str2:<48} \033[94m│\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print(f"\033[94m│\033[0m Last Age:     {age_str2:<48} \033[94m│\033[0m")
                         
-                        print(f"\033[94m│\033[0m First Seen:   {aircraft_info2['first_seen'].strftime('%Y-%m-%d %H:%M:%S UTC'):<48} \033[94m│\033[0m")
-                        print(f"\033[94m│\033[0m Last Seen:    {aircraft_info2['last_seen'].strftime('%Y-%m-%d %H:%M:%S UTC'):<48} \033[94m│\033[0m")
-                        print(f"\033[94m│\033[0m Duration:     {duration_str2}{' ':<40} \033[94m│\033[0m")
-                        print("\033[94m└────────────────────────────────────────────────────────────────┘\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print(f"\033[94m│\033[0m First Seen:   {aircraft_info2['first_seen'].strftime('%Y-%m-%d %H:%M:%S UTC'):<48} \033[94m│\033[0m")
+                            print(f"\033[94m│\033[0m Last Seen:    {aircraft_info2['last_seen'].strftime('%Y-%m-%d %H:%M:%S UTC'):<48} \033[94m│\033[0m")
+                            print(f"\033[94m│\033[0m Duration:     {duration_str2}{' ':<40} \033[94m│\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print("\033[94m└────────────────────────────────────────────────────────────────┘\033[0m")
                     
                     # Display longest slant range aircraft
                     if result_slant:
                         aircraft_info3 = result_slant['aircraft']
                         slant_distance = result_slant['slant_distance']
                         
-                        print()
-                        print("\033[93m┌─ Longest Slant Range Aircraft ──────────────────────────────┐\033[0m")
-                        print(f"\033[93m│\033[0m Hex:          {aircraft_info3['hex']:<48} \033[93m│\033[0m")
-                        print(f"\033[93m│\033[0m Callsign:     {str(aircraft_info3['flight']):<48} \033[93m│\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print()
+                            print("\033[93m┌─ Longest Slant Range Aircraft ──────────────────────────────┐\033[0m")
+                            print(f"\033[93m│\033[0m Hex:          {aircraft_info3['hex']:<48} \033[93m│\033[0m")
+                            print(f"\033[93m│\033[0m Callsign:     {str(aircraft_info3['flight']):<48} \033[93m│\033[0m")
                         print(f"\033[93m│\033[0m Airline:      {get_airline_from_callsign(str(aircraft_info3['flight'])):<48} \033[93m│\033[0m")
                         print(f"\033[93m│\033[0m Registration: {str(aircraft_info3.get('registration', 'N/A')):<48} \033[93m│\033[0m")
                         print(f"\033[93m│\033[0m Type:         {str(aircraft_info3.get('type', 'N/A')):<48} \033[93m│\033[0m")
@@ -3060,46 +3090,57 @@ Benefits:
                         record_time = result_slant.get('timestamp')
                         if record_time:
                             time_str = record_time.strftime('%Y-%m-%d %H:%M:%S UTC')
-                            print(f"\033[93m│\033[0m Record Set:   {time_str:<48} \033[93m│\033[0m")
-                        print("\033[93m└────────────────────────────────────────────────────────────────┘\033[0m")
+                            if not getattr(args, 'headless', False):
+                                print(f"\033[93m│\033[0m Record Set:   {time_str:<48} \033[93m│\033[0m")
+                        if not getattr(args, 'headless', False):
+                            print("\033[93m└────────────────────────────────────────────────────────────────┘\033[0m")
                     
-                    print("\n\033[90mPress Ctrl+C to stop\033[0m")
+                    if not getattr(args, 'headless', False):
+                        print("\n\033[90mPress Ctrl+C to stop\033[0m")
             
             time.sleep(POLL_INTERVAL)
             
     except KeyboardInterrupt:
-        print("\n\n\033[93mShutting down...\033[0m")
+        if not getattr(args, 'headless', False):
+            print("\n\n\033[93mShutting down...\033[0m")
         
         # In read-only mode, skip all final file write operations
         if not args.read_only:
             # Upload any remaining data in the buffer one last time
             if s3_upload_enabled and pending_aircraft:
-                print(f"Uploading {len(pending_aircraft)} pending aircraft records to S3...")
+                if not getattr(args, 'headless', False):
+                    print(f"Uploading {len(pending_aircraft)} pending aircraft records to S3...")
                 upload_minute_file_to_s3(args.s3_bucket, pending_aircraft)
             
             # Recalculate 24-hour position count after writing
-            print("Recalculating 24-hour position count...")
+            if not getattr(args, 'headless', False):
+                print("Recalculating 24-hour position count...")
             position_reports_24h = count_position_reports_24h()
             
             # Generate final outputs
-            print("Generating final KML file...")
+            if not getattr(args, 'headless', False):
+                print("Generating final KML file...")
             generate_kml_from_records()
-            print("Generating final 3D JPG visualization...")
+            if not getattr(args, 'headless', False):
+                print("Generating final 3D JPG visualization...")
             generate_3d_jpg_from_records()
-            print("Generating final heatmap...")
+            if not getattr(args, 'headless', False):
+                print("Generating final heatmap...")
             generate_heatmap()
 
             # Upload final KMLs to S3
             if s3_upload_enabled:
-                print("Uploading final KML files to S3...")
+                if not getattr(args, 'headless', False):
+                    print("Uploading final KML files to S3...")
                 upload_to_s3(s3_bucket_name, s3_kml_bucket_name)
         
         # Clear buffer at shutdown
             pending_aircraft.clear()
-        print("\n\033[92mAircraft Tracker Stopped\033[0m")
-        print(f"Total aircraft tracked: {len(aircraft_tracking)}")
-        print(f"Position reports (24h): {position_reports_24h:,}")
-        print(f"Running position total: {running_position_count:,}")
+        if not getattr(args, 'headless', False):
+            print("\n\033[92mAircraft Tracker Stopped\033[0m")
+            print(f"Total aircraft tracked: {len(aircraft_tracking)}")
+            print(f"Position reports (24h): {position_reports_24h:,}")
+            print(f"Running position total: {running_position_count:,}")
 
 
 if __name__ == "__main__":
