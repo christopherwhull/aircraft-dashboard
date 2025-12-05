@@ -1,4 +1,4 @@
-# Aircraft Database Integration - Setup Complete
+# AirSquawk Aircraft Database Integration - Setup Complete
 
 ## What Was Built
 

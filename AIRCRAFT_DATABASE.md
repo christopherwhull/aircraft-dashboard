@@ -1,4 +1,4 @@
-# Aircraft Database Integration
+# AirSquawk Aircraft Database Integration
 
 This project integrates the OpenSky Network Aircraft Database to provide ICAO24 to tail number (registration) lookups.
 

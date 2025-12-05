@@ -1,4 +1,4 @@
-# Configuration Management
+# AirSquawk Configuration
 
 ## Overview
 
