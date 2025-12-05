@@ -1,6 +1,6 @@
-# Aircraft Dashboard - Linux Installation & Setup Guide
+# AirSquawk - Linux Installation & Setup Guide
 
-This guide covers installation and setup of the Aircraft Dashboard on Linux systems.
+This guide covers installation and setup of AirSquawk on Linux systems.
 
 ## Prerequisites
 

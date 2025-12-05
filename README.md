@@ -429,7 +429,7 @@ aircraft-data/ (read bucket - historical data)
 
 ### Media Packs
 
-**Media packs** are compressed ZIP archives containing all the visual and reference data needed for the Aircraft Dashboard system. They serve as complete, self-contained data packages for distribution and deployment.
+**Media packs** are compressed ZIP archives containing all the visual and reference data needed for the AirSquawk system. They serve as complete, self-contained data packages for distribution and deployment.
 
 #### What's Included in a Media Pack
 

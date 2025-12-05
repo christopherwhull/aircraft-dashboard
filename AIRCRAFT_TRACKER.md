@@ -1,6 +1,6 @@
 # AirSquawk Tracker
 
-Python script that monitors PiAware aircraft data and uploads to S3/MinIO for the Aircraft Dashboard.
+Python script that monitors PiAware aircraft data and uploads to S3/MinIO for AirSquawk.
 
 ## Features
 
@@ -228,4 +228,4 @@ Both the tracker and dashboard should use the same S3 credentials configured in 
 
 ## License
 
-Part of the Aircraft Dashboard for PiAware project.
+Part of the AirSquawk for PiAware project.

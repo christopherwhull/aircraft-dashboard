@@ -1,6 +1,6 @@
-# Aircraft Dashboard Docs
+# AirSquawk Docs
 
-This site contains the documentation and a copy of the wiki pages for the Aircraft Dashboard.
+This site contains the documentation and a copy of the wiki pages for AirSquawk.
 
 - [Home](./wiki/Home.md)
 - [Tabs Index](./wiki/Tabs-Index.md)

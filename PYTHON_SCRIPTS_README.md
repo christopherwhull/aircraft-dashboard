@@ -1,6 +1,6 @@
 # AirSquawk - Python Scripts
 
-This directory contains Python utilities for managing and testing the Aircraft Dashboard server. All PowerShell scripts have been converted to Python for cross-platform compatibility.
+This directory contains Python utilities for managing and testing the AirSquawk server. All PowerShell scripts have been converted to Python for cross-platform compatibility.
 
 ## Scripts Overview
 
@@ -69,7 +69,7 @@ python test_workflow.py --skip-server -r 3  # Skip startup, run 3 tests
 
 **Output:**
 ```
-AIRCRAFT DASHBOARD - FULL TESTING WORKFLOW
+AIRSQUAWK - FULL TESTING WORKFLOW
 
 Step 1: Starting server...
 ✓ Server started on localhost:3002

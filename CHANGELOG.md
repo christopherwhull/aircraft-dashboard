@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the Aircraft Dashboard project will be documented in this file.
+All notable changes to the AirSquawk project will be documented in this file.
 
 ## [2.0.0] - 2025-12-02
 

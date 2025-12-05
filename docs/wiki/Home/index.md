@@ -1,4 +1,4 @@
-# Aircraft Dashboard Wiki
+# AirSquawk Wiki
 
 Welcome to the project wiki. Start here for an overview and quick links.
 

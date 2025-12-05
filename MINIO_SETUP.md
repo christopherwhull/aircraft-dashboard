@@ -1,6 +1,6 @@
 # MinIO S3 Storage - Installation & Setup Guide
 
-MinIO is an S3-compatible object storage server used by the Aircraft Dashboard for data persistence. This guide covers installation across all platforms.
+MinIO is an S3-compatible object storage server used by the AirSquawk for data persistence. This guide covers installation across all platforms.
 
 ## Quick Start (Docker - Recommended)
 
@@ -355,7 +355,7 @@ Open your browser to: `http://localhost:9001`
 
 ### Create Required Buckets
 
-The Aircraft Dashboard and Python tracker will automatically create the required buckets on startup if they don't exist. However, you can also create them manually:
+The AirSquawk and Python tracker will automatically create the required buckets on startup if they don't exist. However, you can also create them manually:
 
 **Via MinIO Console:**
 1. Login to MinIO console
@@ -415,7 +415,7 @@ mc ilm import myminio/piaware-reception-data < retention-policy.json
 mc admin user passwd myminio minioadmin
 ```
 
-## Integration with Aircraft Dashboard
+## Integration with AirSquawk
 
 ### Update Configuration
 

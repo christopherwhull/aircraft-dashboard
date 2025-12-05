@@ -1,6 +1,6 @@
 # Tools Directory
 
-This directory contains all the utility scripts and tools for the Aircraft Dashboard project.
+This directory contains all the utility scripts and tools for the AirSquawk project.
 
 ## Categories
 

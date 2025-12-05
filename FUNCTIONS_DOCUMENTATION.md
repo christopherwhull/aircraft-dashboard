@@ -1,4 +1,4 @@
-# Aircraft Dashboard Functions Documentation
+# AirSquawk Functions Documentation
 
 ## Frontend Functions (public/app.js)
 
