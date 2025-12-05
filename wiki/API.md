@@ -37,6 +37,9 @@ This page documents the most commonly used server API endpoints and their basic 
 - `GET /api/health`, `GET /api/server-status`, `GET /api/cache-status`
   - Health and runtime status endpoints; useful for automated checks and headless captures.
 
+- `GET /cache/tile-metadata?layer=...&z=...&x=...&y=...` (tile proxy admin)
+  - Returns the cached tile metadata JSON (if written) or basic file stats for a requested tile. Useful for debugging where a tile was fetched from (`sourceUrl`) or why a tile was cached under a different upstream service.
+
 - `POST /api/restart`
   - Controlled restart endpoint for CI/ops. Requires `RESTART_API_TOKEN` environment variable to be set on the server.
 

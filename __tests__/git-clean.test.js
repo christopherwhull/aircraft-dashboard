@@ -1,9 +1,10 @@
 const { execSync } = require('child_process');
 
 describe('Git repository cleanliness', () => {
-  test('working tree should be clean (no uncommitted changes)', () => {
-    if (process.env.ENFORCE_GIT_CLEAN !== 'true') {
-      console.log('ENFORCE_GIT_CLEAN not enabled; skipping git clean check.');
+    test('working tree should be clean (no uncommitted changes)', () => {
+    const config = require('../config');
+    if (!config.server || !config.server.enforceGitClean) {
+      console.log('ENFORCE_GIT_CLEAN not enabled in config; skipping git clean check.');
       return;
     }
     let status = '';

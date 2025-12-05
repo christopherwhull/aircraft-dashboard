@@ -4,7 +4,6 @@ const http = require('http');
 const express = require('express');
 const socketIo = require('socket.io');
 const axios = require('axios');
-const morgan = require('morgan');
 const { S3Client, PutObjectCommand, HeadBucketCommand, CreateBucketCommand } = require('@aws-sdk/client-s3');
 
 const config = require('./config');
@@ -57,7 +56,7 @@ try {
         logger.info(`Created state directory: ${stateDir}`);
     }
 } catch (err) {
-    console.error('Failed to ensure runtime directory exists:', err);
+    logger.error('Failed to ensure runtime directory exists:', err);
 }
 
 // --- Global Cache for S3 Operations and Stats ---
@@ -283,18 +282,22 @@ function generateHeatmapData() {
 // --- Middleware ---
 // Serve a no-content response for favicon requests to avoid 404 spam in logs
 app.get('/favicon.ico', (req, res) => { res.status(204).end(); });
+
+// Serve small runtime JS config for the frontend to respect server-side flags
+app.get('/runtime-config.js', (req, res) => {
+    try {
+        // Derive arcgis base from configured GIS tile bases (strip trailing /<service>/MapServer)
+        let arcgisBase = '';
+        if (Array.isArray(config.gisTileBases) && config.gisTileBases.length > 0) {
+            const first = config.gisTileBases[0];
+            arcgisBase = first.replace(/\/[^\/]+\/MapServer$/,'');
+        }
+
+        const runtime = {
+            allowInternetLayers: !!(config.ui && config.ui.allowInternetLayers),
+            arcgisBase: arcgisBase
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
-const accessLogStream = fs.createWriteStream(path.join(__dirname, config.server.accessLogFile), { flags: 'a' });
-
-// Use W3C Extended Log Format if enabled, otherwise use Morgan format
-if (config.logging.enableW3C) {
-    const { logW3C, initializeW3CLogger } = require('./lib/logger');
-    initializeW3CLogger(config);
-    app.use(logW3C);
-} else {
-    app.use(morgan(config.logging.format, { stream: accessLogStream }));
-}
 
 // --- Heatmap Viewer Routes ---
 app.get('/heatmap-leaflet', (req, res) => {
@@ -1568,6 +1571,21 @@ async function initialize() {
     });
     // Use BUCKET_NAME for read-only (historical) endpoints, WRITE_BUCKET_NAME for write endpoints
     setupApiRoutes(app, s3, BUCKET_NAME, WRITE_BUCKET_NAME, getInMemoryState, globalCache, positionCache); // Pass positionCache for fast position lookups
+
+    app.get('/api/logo', async (req, res) => {
+        try {
+            const command = new GetObjectCommand({
+                Bucket: WRITE_BUCKET_NAME,
+                Key: 'logos/airsquak.jpg',
+            });
+            const { Body } = await s3.send(command);
+            res.setHeader('Content-Type', 'image/jpeg');
+            Body.pipe(res);
+        } catch (error) {
+            console.error('Error serving logo:', error);
+            res.status(404).send('Logo not found');
+        }
+    });
 
     // Background jobs to compute heavy aggregations and populate globalCache
     let aggRunning = { airlines: false, squawk: false, historical: false };

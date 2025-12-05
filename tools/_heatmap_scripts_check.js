@@ -41,7 +41,7 @@
             opacity: 0.8
         });
 
-        // Official FAA IFR High Chart
+        // Official FAA IFR High Chart (published as IFR_High)
         const faaIfrHigh = L.tileLayer('http://localhost:3003/tile/IFR_High/{z}/{y}/{x}', {
             attribution: '© FAA',
             maxZoom: 12,

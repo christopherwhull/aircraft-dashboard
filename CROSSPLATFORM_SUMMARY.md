@@ -59,6 +59,18 @@ Users can now run:
 - `npm run restart:windows` - Restart on Windows
 - `npm run restart:unix` - Restart on Linux/Mac
 
+### 6. Python Service Manager (Development convenience)
+
+- A small cross-platform Python helper was added at `tools/manage_services.py` to start/stop/restart the local Node services used during development (main server, GeoTIFF server, and tile-proxy).
+- The script writes PID and log files to `runtime/` and supports waiting on configured health endpoints.
+- Project npm scripts have been extended to wrap the Python manager:
+  - `npm run services:start` — start services
+  - `npm run services:stop` — stop services
+  - `npm run services:restart` — restart services
+  - `npm run services:status` — show service status
+
+Use the Python manager for local development convenience. For production deployments, prefer `systemd`, `pm2`, or container orchestration.
+
 ### 5. Updated README.md
 
 - Platform-specific Quick Start section

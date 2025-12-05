@@ -6,9 +6,13 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>Aircraft Heatmap - 1nm Grid</title>
+    <title>AirSquawk</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Injected by server.js
+        window.__RUNTIME_CONFIG__ = {"allowInternetLayers":true,"arcgisBase":"https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services"};
+    </script>
     <style>
         :root {
             --bg: #0f0f10;
@@ -32,6 +36,13 @@
             background: var(--panel-bg);
             padding: 12px 16px;
             border-bottom: 1px solid #222;
+            display: flex;
+            align-items: center;
+        }
+
+        .header img {
+            height: 40px;
+            margin-right: 15px;
         }
 
         .controls {
@@ -64,7 +75,17 @@
 
         .header h1 {
             font-size: 24px;
-            margin-bottom: 10px;
+            margin-bottom: 0;
+        }
+
+        .header-content {
+            display: flex;
+            align-items: center;
+        }
+
+        .logo {
+            height: 40px;
+            margin-right: 15px;
         }
 
         .controls {
@@ -225,11 +246,14 @@
         }
     </style>
 </head>
-<body>
+<body class="dark-mode">
     <div class="header">
-        <h1>🛩️ Aircraft Position Grid (1nm × 1nm) - Leaflet</h1>
+        <img src="/media/airsquak.jpg" alt="AirSquawk Logo">
+        <h1>AirSquawk</h1>
+    </div>
 
-        <div class="controls">
+    <div class="controls">
+        <div class="control-row">
             <div class="control-group">
                 <label for="time-window">Time Window:</label>
                 <select id="time-window">
@@ -241,7 +265,8 @@
                     <option value="all">All Time</option>
                 </select>
             </div>
-
+        </div>
+        <div class="control-row">
             <div class="control-group">
                 <label for="color-mode">Color:</label>
                 <select id="color-mode">
@@ -250,7 +275,8 @@
                     <option value="altitude">Altitude-based</option>
                 </select>
             </div>
-
+        </div>
+        <div class="control-row">
             <div class="control-group">
                 <label for="scaling-mode">Scaling:</label>
                 <select id="scaling-mode">
@@ -260,77 +286,56 @@
                     <option value="power">Power (γ=2.2)</option>
                 </select>
             </div>
-
             <div class="control-group">
                 <label for="opacity">Opacity:</label>
                 <input type="range" id="opacity" min="0.1" max="1.0" step="0.1" value="0.7" style="width: 100px;">
                 <span id="opacity-value">0.7</span>
             </div>
-
             <div class="control-group">
                 <label for="show-borders">
                     <input type="checkbox" id="show-borders"> Show Borders
                 </label>
             </div>
-
+        </div>
+        <div class="control-row tracking-controls">
             <div class="control-group">
                 <label for="show-live">
                     <input type="checkbox" id="show-live"> Show Live Positions
                 </label>
             </div>
-
             <div class="control-group">
                 <label for="use-external-squawk">
                     <input type="checkbox" id="use-external-squawk"> Use External Squawk API
                 </label>
             </div>
-
             <div class="control-group" style="min-width:260px;">
                 <label for="squawk-api-base">Squawk API Base:</label>
-                <input id="squawk-api-base" type="text" placeholder="https://squawk.example/api" style="width:220px;">
+                <input id="squawk-api-base" type="text" placeholder="https://squawk.example/api" style="width:220px;" value="https://squawk.example/api">
             </div>
-
             <div class="control-group">
                 <label for="track-window-input">Track Window (min):</label>
-                <input id="track-window-input" type="number" min="1" max="1440" step="1" value="10" style="width:70px;">
+                <input id="track-window-input" type="number" min="1" max="1440" step="1" value="15" style="width:70px;">
             </div>
-
             <div class="control-group">
                 <label for="show-long-tracks">
                     <input type="checkbox" id="show-long-tracks"> Show Long Tracks
                 </label>
             </div>
-
             <div class="control-group">
                 <label for="persist-on-click">
                     <input type="checkbox" id="persist-on-click"> Persist track on click
                 </label>
             </div>
-
-            <div class="control-group">
-                <label for="dark-mode">
-                    <input type="checkbox" id="dark-mode"> Dark Mode
-                </label>
-            </div>
-
-            <div class="control-group">
-                <button id="clear-persistent-tracks" onclick="clearAllPersistentTracks()">Clear Tracks</button>
-            </div>
-
-            <div class="control-group">
-                <button id="toggle-persistent-visibility" onclick="togglePersistentVisibility()">Hide Persisted Tracks</button>
-            </div>
-
-            <div class="control-group">
-                <button id="toggle-debug-dump" onclick="toggleDebugDump()">Show Debug Dump</button>
-            </div>
-
+        </div>
+        <div class="control-row button-row">
+            <button id="clear-persistent-tracks" onclick="clearAllPersistentTracks()">Clear Tracks</button>
+            <button id="toggle-persistent-visibility" onclick="togglePersistentVisibility()">Hide Persisted Tracks</button>
+            <button id="toggle-debug-dump" onclick="toggleDebugDump()">Show Debug Dump</button>
             <button onclick="loadGridData()">🔄 Refresh</button>
             <button onclick="toggleLegend()">📋 Legend</button>
             <button onclick="resetMap()">🏠 Reset View</button>
         </div>
-
-        <div id="error" class="error"></div>
+    </div>        <div id="error" class="error"></div>
     </div>
 
     <div id="map"></div>
@@ -432,41 +437,66 @@
             subdomains: 'abcd'
         });
 
-        // Official FAA IFR Low Chart from ArcGIS (served via local proxy)
-        const faaIfrLow = L.tileLayer('http://localhost:3004/tile/IFR_AreaLow/{z}/{y}/{x}', {
-            attribution: '© FAA',
-            maxZoom: 12,
-            minZoom: 7,
-            zIndex: 200,
-            opacity: 0.8
+        // Load runtime config injected by server (small JS file). This allows
+        // server-side control over whether internet-hosted layers are shown.
+        const runtimeConfig = (typeof window !== 'undefined' && window.__RUNTIME_CONFIG__) ? window.__RUNTIME_CONFIG__ : {};
+        const arcgisBase = runtimeConfig.arcgisBase || 'https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services';
+        const proxyBase = 'http://localhost:3004/tile';
+
+        // --- Define Proxy-backed Layers ---
+        const faaIfrLowProxy = L.tileLayer(`${proxyBase}/IFR_AreaLow/{z}/{y}/{x}`, {
+            attribution: '© FAA (Proxy)', maxZoom: 12, minZoom: 7, zIndex: 200, opacity: 0.7
+        });
+        const faaIfrHighProxy = L.tileLayer(`${proxyBase}/IFR_High/{z}/{y}/{x}`, {
+            attribution: '© FAA (Proxy)', maxZoom: 12, minZoom: 7, zIndex: 200, opacity: 0.7
+        });
+        const faaVfrSectionalProxy = L.tileLayer(`${proxyBase}/VFR_Sectional/{z}/{y}/{x}`, {
+            attribution: '© FAA (Proxy)', maxZoom: 12, minZoom: 7, zIndex: 200, opacity: 0.8
+        });
+        const faaVfrTerminalProxy = L.tileLayer(`${proxyBase}/VFR_Terminal/{z}/{y}/{x}`, {
+            attribution: '© FAA (Proxy)', maxZoom: 12, minZoom: 10, minNativeZoom: 10, maxNativeZoom: 12, zIndex: 200, opacity: 0.8
         });
 
-        // Official FAA IFR High Chart (served via local proxy)
-        const faaIfrHigh = L.tileLayer('http://localhost:3004/tile/IFR_High/{z}/{y}/{x}', {
-            attribution: '© FAA',
-            maxZoom: 12,
-            minZoom: 7,
-            zIndex: 200,
-            opacity: 0.8
+        // --- Define Internet-hosted ArcGIS Layers ---
+        const faaIfrLowInternet = L.tileLayer(`${arcgisBase}/IFR_AreaLow/MapServer/tile/{z}/{y}/{x}`, {
+            attribution: '© FAA (ArcGIS)', maxZoom: 12, minZoom: 7, zIndex: 190, opacity: 0.7
+        });
+        const faaIfrHighInternet = L.tileLayer(`${arcgisBase}/IFR_High/MapServer/tile/{z}/{y}/{x}`, {
+            attribution: '© FAA (ArcGIS)', maxZoom: 12, minZoom: 7, zIndex: 190, opacity: 0.7
+        });
+        const faaVfrSectionalInternet = L.tileLayer(`${arcgisBase}/VFR_Sectional/MapServer/tile/{z}/{y}/{x}`, {
+            attribution: '© FAA (ArcGIS)', maxZoom: 12, minZoom: 7, zIndex: 190, opacity: 0.8
+        });
+        const faaVfrTerminalInternet = L.tileLayer(`${arcgisBase}/VFR_Terminal/MapServer/tile/{z}/{y}/{x}`, {
+            attribution: '© FAA (ArcGIS)', maxZoom: 12, minZoom: 10, minNativeZoom: 10, maxNativeZoom: 12, zIndex: 190, opacity: 0.8
         });
 
-        // Official FAA VFR Sectional Chart (served via local proxy)
-        const faaVfrSectional = L.tileLayer('http://localhost:3004/tile/VFR_Sectional/{z}/{y}/{x}', {
-            attribution: '© FAA',
-            maxZoom: 12,
-            minZoom: 7,
-            zIndex: 200,
-            opacity: 0.8
+        // --- Define Weather Overlay Layers ---
+        const weatherRadarUrl = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png';
+        const surfaceAnalysisUrl = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/sfc_analysis/{z}/{x}/{y}.png';
+        const satelliteWvUrl = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/goes-wv-4km-900913/{z}/{x}/{y}.png';
+
+        const weatherRadar = L.tileLayer(weatherRadarUrl, {
+            attribution: 'Weather © Iowa State University',
+            opacity: 0.25,
+            zIndex: 250
+        });
+        const surfaceAnalysis = L.tileLayer(surfaceAnalysisUrl, {
+            attribution: 'Weather © Iowa State University',
+            opacity: 0.25,
+            zIndex: 251
+        });
+        const satelliteWv = L.tileLayer(satelliteWvUrl, {
+            attribution: 'Weather © Iowa State University',
+            opacity: 0.25,
+            zIndex: 249
         });
 
-        // Official FAA VFR Terminal Area Chart (served via local proxy)
-        const faaVfrTerminal = L.tileLayer('http://localhost:3004/tile/VFR_Terminal/{z}/{y}/{x}', {
-            attribution: '© FAA',
-            maxZoom: 12,
-            minZoom: 7,
-            zIndex: 200,
-            opacity: 0.8
-        });
+        // --- Keep simple aliases for backward compatibility and simpler references in downstream code.
+        const faaIfrLow = faaIfrLowProxy;
+        const faaIfrHigh = faaIfrHighProxy;
+        const faaVfrSectional = faaVfrSectionalProxy;
+        const faaVfrTerminal = faaVfrTerminalProxy;
 
         // Layer control
         const baseLayers = {
@@ -475,12 +505,24 @@
             "OpenTopoMap": openTopoLayer
         };
         
-        const overlayLayers = {
-            "FAA IFR Low": faaIfrLow,
-            "FAA IFR High": faaIfrHigh,
-            "FAA VFR Sectional": faaVfrSectional,
-            "FAA VFR Terminal Area": faaVfrTerminal
-        };
+        // Build overlay layers list conditionally based on runtime config
+        const overlayLayers = {};
+        // Weather Layers
+        overlayLayers["Surface Analysis Internet"] = surfaceAnalysis;
+        overlayLayers["Satellite Water Vapor Internet"] = satelliteWv;
+        overlayLayers["Weather Radar Internet"] = weatherRadar;
+        // Proxy Layers
+        overlayLayers["FAA VFR Sectional (Proxy)"] = faaVfrSectionalProxy;
+        overlayLayers["FAA VFR Terminal (Proxy)"] = faaVfrTerminalProxy;
+        overlayLayers["FAA IFR Enroute High (Proxy)"] = faaIfrHighProxy;
+        overlayLayers["FAA IFR Low (Proxy)"] = faaIfrLowProxy;
+        // Internet Layers
+        if (runtimeConfig.allowInternetLayers) {
+            overlayLayers["FAA VFR Sectional Internet"] = faaVfrSectionalInternet;
+            overlayLayers["FAA VFR Terminal Internet"] = faaVfrTerminalInternet;
+            overlayLayers["FAA IFR Enroute High Internet"] = faaIfrHighInternet;
+            overlayLayers["FAA IFR Low Internet"] = faaIfrLowInternet;
+        }
         
         osmLayer.addTo(map);
         // Keep a handle to the layers control so we can add overlays once created
@@ -495,28 +537,37 @@
         // tile path names for use by the click handler.
         (function enforceSingleFaaOverlay() {
             const faaLayers = [faaIfrLow, faaIfrHigh, faaVfrSectional, faaVfrTerminal];
-            // Map layer object -> upstream name
+            // Map layer object -> upstream name (used by click handler)
             const faaLayerName = new Map([
                 [faaVfrSectional, 'VFR_Sectional'],
                 [faaVfrTerminal, 'VFR_Terminal'],
                 [faaIfrHigh, 'IFR_High'],
                 [faaIfrLow, 'IFR_AreaLow']
             ]);
+
             // Keep track of the most-recently-added FAA overlay (or null)
+            // Note: we allow both IFR layers to coexist; this only tracks last-added
             let activeFaaLayer = null;
 
             map.on('overlayadd', (e) => {
                 try {
                     if (!faaLayers.includes(e.layer)) return;
-                    // Remove any other FAA overlay layers that are present
-                    for (const l of faaLayers) {
-                        if (l !== e.layer && map.hasLayer(l)) {
-                            map.removeLayer(l);
+                    // If a VFR overlay was added, remove any other FAA overlays
+                    if (e.layer === faaVfrSectional || e.layer === faaVfrTerminal) {
+                        for (const l of faaLayers) {
+                            if (l !== e.layer && map.hasLayer(l)) {
+                                map.removeLayer(l);
+                            }
                         }
+                    } else {
+                        // An IFR overlay was added — remove VFR overlays but allow the
+                        // other IFR overlay to remain so both IFR layers can be shown.
+                        if (map.hasLayer(faaVfrSectional)) map.removeLayer(faaVfrSectional);
+                        if (map.hasLayer(faaVfrTerminal)) map.removeLayer(faaVfrTerminal);
                     }
                     activeFaaLayer = e.layer;
                 } catch (err) {
-                    console.warn('Error enforcing single FAA overlay:', err);
+                    console.warn('Error enforcing FAA overlay rules:', err);
                 }
             });
 
@@ -531,9 +582,33 @@
 
             // Expose helpers used elsewhere in this file
             window._faaLayerHelpers = window._faaLayerHelpers || {};
-            window._faaLayerHelpers.getActiveLayerName = () => (activeFaaLayer ? faaLayerName.get(activeFaaLayer) : null);
-            window._faaLayerHelpers.getActiveLayerObject = () => activeFaaLayer;
+            // Prefer IFR_High when multiple IFR overlays present; otherwise return
+            // the last active FAA overlay name (or null).
+            window._faaLayerHelpers.getActiveLayerName = () => {
+                try {
+                    if (map.hasLayer(faaIfrHigh)) return 'IFR_High';
+                    if (map.hasLayer(faaIfrLow)) return 'IFR_AreaLow';
+                    return (activeFaaLayer ? faaLayerName.get(activeFaaLayer) : null);
+                } catch (e) {
+                    return (activeFaaLayer ? faaLayerName.get(activeFaaLayer) : null);
+                }
+            };
+            window._faaLayerHelpers.getActiveLayerObject = () => activeF-aaLayer;
         })();
+
+        // Set up weather radar refresh interval
+        setInterval(() => {
+            const timestamp = Date.now();
+            if (map.hasLayer(weatherRadar)) {
+                weatherRadar.setUrl(weatherRadarUrl + `?t=${timestamp}`);
+            }
+            if (map.hasLayer(surfaceAnalysis)) {
+                surfaceAnalysis.setUrl(surfaceAnalysisUrl + `?t=${timestamp}`);
+            }
+            if (map.hasLayer(satelliteWv)) {
+                satelliteWv.setUrl(satelliteWvUrl + `?t=${timestamp}`);
+            }
+        }, 5 * 60 * 1000); // 5 minutes
 
         // Deduplicate any leftover duplicate entries in layers control (cleans old client state)
         function dedupeLayersControl() {
@@ -612,38 +687,29 @@
         // and open the raw tile URL in a new tab (useful for debugging / asserting tile availability).
         map.on('click', (e) => {
             try {
-                // If a marker or other interactive layer handled the click, ignore here
-                // (Leaflet will call marker click handlers first when clicking markers).
                 const zoom = map.getZoom();
                 const { lat, lng } = e.latlng;
                 const tile = lonLatToTile(lng, lat, zoom);
 
-                // Check FAA overlays and build corresponding tile URL where applicable.
-                // Prefer the explicit active layer tracker (set in enforceSingleFaaOverlay)
-                // to avoid identity/duplication issues; fall back to map.hasLayer checks.
-                let url = null;
-                try {
-                    const activeName = (window._faaLayerHelpers && typeof window._faaLayerHelpers.getActiveLayerName === 'function') ? window._faaLayerHelpers.getActiveLayerName() : null;
-                    if (activeName) {
-                        url = `http://localhost:3004/tile/${activeName}/${zoom}/${tile.y}/${tile.x}`;
-                    } else {
-                        if (map.hasLayer(faaVfrSectional)) {
-                            url = `http://localhost:3004/tile/VFR_Sectional/${zoom}/${tile.y}/${tile.x}`;
-                        } else if (map.hasLayer(faaVfrTerminal)) {
-                            url = `http://localhost:3004/tile/VFR_Terminal/${zoom}/${tile.y}/${tile.x}`;
-                        } else if (map.hasLayer(faaIfrHigh)) {
-                            url = `http://localhost:3004/tile/IFR_Enroute_High/${zoom}/${tile.y}/${tile.x}`;
-                        } else if (map.hasLayer(faaIfrLow)) {
-                            // use the AreaLow name (IFR_AreaLow) which matches the upstream/service name
-                            url = `http://localhost:3004/tile/IFR_AreaLow/${zoom}/${tile.y}/${tile.x}`;
-                        }
+                // Get all active FAA layers and decide which one is "on top" to show a URL for.
+                // Priority: IFR High > IFR Low > VFR Sectional > VFR Terminal.
+                const activeFaa = (window._faaLayerHelpers && window._faaLayerHelpers.getActiveLayers) ? window._faaLayerHelpers.getActiveLayers() : [];
+                
+                if (activeFaa.length > 0) {
+                    let topLayer = activeFaa[0];
+                    if (activeFaa.length > 1) {
+                        const hasIfrHigh = activeFaa.find(l => l.name === 'IFR_High');
+                        const hasIfrLow = activeFaa.find(l => l.name === 'IFR_AreaLow');
+                        if (hasIfrHigh) topLayer = hasIfrHigh;
+                        else if (hasIfrLow) topLayer = hasIfrLow;
                     }
-                } catch (err) {
-                    console.warn('Map click handler FAA overlay detection error:', err);
-                }
 
-                if (url) {
-                    // Open tile in new tab for inspection (or you can change to fetch() if preferred)
+                    let url = '';
+                    if (topLayer.type === 'proxy') {
+                        url = `${proxyBase}/${topLayer.name}/${zoom}/${tile.y}/${tile.x}`;
+                    } else {
+                        url = `${arcgisBase}/${topLayer.name}/MapServer/tile/${zoom}/${tile.y}/${tile.x}`;
+                    }
                     window.open(url, '_blank');
                 }
             } catch (err) {
@@ -684,8 +750,8 @@
                 , trackWindowMinutes: document.getElementById('track-window-input') ? document.getElementById('track-window-input').value : '1'
                 , persistOnClick: document.getElementById('persist-on-click') ? document.getElementById('persist-on-click').checked : false
                 , darkMode: document.getElementById('dark-mode') ? document.getElementById('dark-mode').checked : false
-                , useExternalSquawk: document.getElementById('use-external-squawk') ? document.getElementById('use-external-squawk').checked : false
-                , squawkApiBase: document.getElementById('squawk-api-base') ? document.getElementById('squawk-api-base').value : ''
+                , useExternalSquawk: document.getElementById('use-external-airsquawk') ? document.getElementById('use-external-airsquawk').checked : false
+                , squawkApiBase: document.getElementById('airsquawk-api-base') ? document.getElementById('airsquawk-api-base').value : ''
             };
             setCookie('leafletHeatmapSettings', JSON.stringify(settings));
         }

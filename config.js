@@ -194,6 +194,8 @@ module.exports = {
         heatmap: {
             gridCellSize: 1,                           // Nautical miles per grid cell (1 NM × 1 NM)
         },
+        // Allow showing internet-hosted tile layers in the UI (blockable)
+        allowInternetLayers: true,
         // Table settings
         table: {
             defaultSortColumn: 'count',                // Default sort for airline stats
@@ -201,6 +203,14 @@ module.exports = {
         },
     }
     ,
+    // --- Tile proxy runtime options ---
+    tileProxy: {
+        // When true the tile proxy will only use upstream bases that explicitly
+        // reference the requested layer name. This prevents falling back to
+        // other MapServer services which can cause different logical layers
+        // to return the same upstream tiles.
+        strictLayerMatch: true
+    },
     // --- GIS Tile Bases (ArcGIS MapServer) ---
     // These are used by the GeoTIFF server and tile proxy as fallback upstreams
     // for FAA chart overlays. Can be overridden by the GIS_TILE_BASES env var
@@ -214,9 +224,14 @@ module.exports = {
     // --- Tools / Scripts configuration ---
     tools: {
         // Precache helper settings
-        targetGb: 0.001, // small run for quick re-warm
-        layers: 'IFR_High',
-        zooms: '8',
+        targetGb: 1, // large warm: 1 GB
+        // Precache all configured FAA overlay services by default
+        layers: 'IFR_AreaLow,IFR_High,VFR_Sectional,VFR_Terminal',
+        // Reasonable preview zooms to exercise coverage without fetching everything
+        zooms: '7,8,9,10,11',
+        // Center the precache around Chicago if not using a PiAware receiver
+        piawareLat: 41.8781,
+        piawareLon: -87.6298,
         concurrency: 4,
         requestTimeoutMs: 5000,
         sampleTiles: '',

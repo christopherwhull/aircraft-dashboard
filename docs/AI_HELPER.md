@@ -100,6 +100,24 @@ Include:
 - How to verify (tests, endpoint to curl, expected output).
 - Any timeouts/backoffs (e.g., wait 3 minutes for squawk tests).
 
+## Dependencies
+- @aws-sdk/client-s3: ^3.937.0
+- acorn: ^8.15.0
+- archiver: ^7.0.1
+- aws-sdk: ^2.814.0
+- axios: ^1.13.2
+- body-parser: ^2.2.0
+- express: ^4.17.1
+- geotiff: ^2.1.4-beta.1
+- morgan: ^1.10.0
+- node-fetch: ^2.7.0
+- proj4: ^2.20.2
+- puppeteer: ^24.31.0
+- sharp: ^0.34.5
+- socket.io: ^4.0.1
+- winston: ^3.13.1
+- winston-daily-rotate-file: ^5.0.0
+
 Example:
 > Update `/api/piaware-status` to read from `/data/aircraft.json`, return the aircraft count and receiver lat/lon, and add a 3-minute server-uptime check so squawk tests skip early. Verify with `npm test` and by opening `/api/piaware-status` in a browser.
 
@@ -136,5 +154,6 @@ Below are commonly-used server API endpoints you may ask the AI to change or use
 - `GET /api/health` and `GET /api/server-status`: health and runtime status endpoints used in headless captures.
 - `GET /api/cache-status` and `GET /api/heatmap-cache-clear`: cache inspection and clear endpoints.
 - `POST /api/restart`: CI/ops restart endpoint (requires `RESTART_API_TOKEN` configured).
+- `GET /cache/tile-metadata?layer=...&z=...&x=...&y=...` — (tile proxy) returns per-tile metadata when available. Useful when debugging cached tile provenance. If metadata doesn't exist but the tile file exists the endpoint returns basic file info (contentType, size, mtime).
 
 When requesting AI edits that touch API behavior, include the endpoint, expected request shape, expected response (example), and any performance constraints (e.g. avoid scanning all S3 files for high-frequency UI calls).

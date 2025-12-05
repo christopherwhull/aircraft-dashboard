@@ -7,15 +7,17 @@ const GeoTIFF = require('geotiff');
 const Sharp = require('sharp');
 const path = require('path');
 const proj4 = require('proj4');
+const fetch = require('node-fetch');
 
 const app = express();
-const PORT = process.env.GEOTIFF_PORT || 3003;
 const config = require('./config');
+// Use a dedicated geotiff port from config.js (fallback to 3003)
+const PORT = (config && config.server && config.server.geotiffPort) ? parseInt(config.server.geotiffPort, 10) : 3003;
 
-// Tile cache configuration
-const TILE_CACHE_DIR = process.env.TILE_CACHE_DIR || path.join(process.cwd(), 'tile_cache');
-const TILE_CACHE_MAX_BYTES = parseInt(process.env.TILE_CACHE_MAX_BYTES || String(5 * 1024 * 1024 * 1024), 10); // 5 GB default
-const TILE_PRUNE_INTERVAL_SECONDS = parseInt(process.env.TILE_PRUNE_INTERVAL_SECONDS || '3600', 10); // default 1 hour
+// Tile cache configuration (literals used when not present in config.js)
+const TILE_CACHE_DIR = path.join(process.cwd(), 'tile_cache');
+const TILE_CACHE_MAX_BYTES = 5 * 1024 * 1024 * 1024; // 5 GB default
+const TILE_PRUNE_INTERVAL_SECONDS = 3600; // default 1 hour
 
 if (!fs.existsSync(TILE_CACHE_DIR)) {
     fs.mkdirSync(TILE_CACHE_DIR, { recursive: true });
@@ -230,6 +232,124 @@ app.get('/cache/status', (req, res) => {
     }
 });
 
+// --- Proxy fallback for external GIS tile layers (ArcGIS/MapServer or chart-style)
+// If a request comes in for /tile/:layer/:z/:y/:x and the server does not have
+// that chart, attempt to fetch the tile from configured external sources.
+// Priority: environment variable `GIS_TILE_BASES` or `TILE_PROXY_TARGET` (comma-separated),
+// otherwise fall back to `config.gisTileBases` array defined in `config.js`.
+let EXTERNAL_TILE_BASES = [];
+// Use configured GIS tile bases from `config.gisTileBases`. Do not read
+// runtime environment variables so behavior is deterministic from config.js.
+if (Array.isArray(config.gisTileBases) && config.gisTileBases.length > 0) {
+    EXTERNAL_TILE_BASES = config.gisTileBases.map(s => String(s).trim()).filter(Boolean);
+}
+
+function cachePathFor(layer, z, x, y, ext) {
+    const safeLayer = layer ? layer.replace(/[^a-zA-Z0-9_\-]/g, '_') : 'tiles';
+    const dir = path.join(TILE_CACHE_DIR, safeLayer, String(z), String(x));
+    const filename = `${y}${ext}`;
+    return path.join(dir, filename);
+}
+
+async function tryFetchCandidates(candidates) {
+    for (const url of candidates) {
+        try {
+            console.log(`[geotiff-proxy] trying upstream: ${url}`);
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 5000);
+            const res = await fetch(url, { signal: controller.signal });
+            clearTimeout(timeout);
+            if (res) {
+                console.log(`[geotiff-proxy] upstream response: ${url} -> ${res.status} ${res.statusText || ''} ct=${res.headers.get('content-type')}`);
+            }
+            if (res && res.ok) {
+                const buf = Buffer.from(await res.arrayBuffer());
+                const ct = res.headers.get('content-type') || 'application/octet-stream';
+                return { url, buf, contentType: ct };
+            }
+        } catch (e) {
+            console.warn('[geotiff-proxy] fetch error for', url, e && e.message ? e.message : e);
+            // try next candidate
+        }
+    }
+    return null;
+}
+
+async function fetchAndCache(layer, z, x, y, candidates) {
+    const result = await tryFetchCandidates(candidates);
+    if (!result) return null;
+    let ext = '.png';
+    if (/jpeg|jpg/i.test(result.contentType)) ext = '.jpg';
+    else if (/webp/i.test(result.contentType)) ext = '.webp';
+
+    const out = cachePathFor(layer, z, x, y, ext);
+    try {
+        fs.mkdirSync(path.dirname(out), { recursive: true });
+        const tmp = out + '.tmp';
+        fs.writeFileSync(tmp, result.buf);
+        fs.renameSync(tmp, out);
+        return { out, contentType: result.contentType, size: result.buf.length, source: result.url };
+    } catch (e) {
+        return { out: null, contentType: result.contentType, size: result.buf.length, source: result.url, buf: result.buf };
+    }
+}
+
+// Accept /tile/:layer/:z/:y/:x requests from client UI and try external GIS sources
+app.get('/tile/:layer/:z/:y/:x', async (req, res) => {
+    try {
+        const { layer, z, y, x } = req.params;
+
+        // First check local cache for common extensions
+        const exts = ['.png', '.jpg', '.jpeg', '.webp'];
+        for (const ext of exts) {
+            const p = cachePathFor(layer, z, x, y, ext);
+            if (fs.existsSync(p)) {
+                const ct = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : (ext === '.webp' ? 'image/webp' : 'image/png');
+                res.set('Content-Type', ct);
+                res.set('X-Cache', 'HIT');
+                return fs.createReadStream(p).pipe(res);
+            }
+        }
+
+        // Build candidate upstream URLs
+        const candidates = [];
+        // If environment-specified external bases exist, try each
+        for (const baseRaw of EXTERNAL_TILE_BASES) {
+            const base = baseRaw.replace(/\/$/, '');
+            if (/arcgis|MapServer/i.test(base)) {
+                candidates.push(`${base}/tile/${z}/${y}/${x}`);
+                candidates.push(`${base}/tile/${z}/${y}/${x}.png`);
+            }
+            // chart-style
+            candidates.push(`${base}/tile/${layer}/${z}/${x}/${y}.png`);
+            candidates.push(`${base}/tile/${layer}/${z}/${x}/${y}`);
+            candidates.push(`${base}/${layer}/${z}/${x}/${y}.png`);
+        }
+
+        // Also try forming candidate from known local geotiff charts mapping if any
+        // If no external bases configured, respond 404 quickly
+        if (candidates.length === 0) return res.status(404).send('No external tile sources configured');
+
+        const cached = await fetchAndCache(layer, z, x, y, candidates);
+        if (!cached) return res.status(502).send('Tile not available from external sources');
+        if (cached.out && fs.existsSync(cached.out)) {
+            res.set('Content-Type', cached.contentType || 'application/octet-stream');
+            res.set('X-Cache', 'MISS');
+            return fs.createReadStream(cached.out).pipe(res);
+        }
+        if (cached.buf) {
+            res.set('Content-Type', cached.contentType || 'application/octet-stream');
+            res.set('X-Cache', 'MISS');
+            return res.send(Buffer.from(cached.buf));
+        }
+        return res.status(502).send('Tile fetch failed');
+    } catch (e) {
+        console.error('Error in /tile proxy handler:', e && e.stack ? e.stack : e);
+        return res.status(500).send('Internal proxy error');
+    }
+});
+
+
 // Try to serve cached tile from disk before rendering
 app.get('/charts/:chart/:z/:x/:y.png', (req, res, next) => {
     try {
@@ -381,8 +501,8 @@ async function pruneTileCache() {
     try {
         console.log('Running tile cache prune...');
 
-        // Attempt to fetch PiAware receiver location
-        const piawareUrl = config && config.dataSource && config.dataSource.piAwareUrl ? config.dataSource.piAwareUrl : process.env.PIAWARE_URL;
+        // Attempt to fetch PiAware receiver location (configured in config.js)
+        const piawareUrl = config && config.dataSource && config.dataSource.piAwareUrl ? config.dataSource.piAwareUrl : null;
         let receiver = null;
         if (piawareUrl) {
             try {

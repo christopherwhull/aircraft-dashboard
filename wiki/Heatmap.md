@@ -33,6 +33,13 @@ The heatmap uses a separate Leaflet-based viewer (`/heatmap-leaflet`) for better
 - Aircraft type database for filtering
 - Aviation chart tiles (optional overlays)
 
+## Aviation chart tile sources
+
+- Official FAA ArcGIS tile service (example):
+
+	- URL: https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/VFR_Sectional/MapServer?cacheKey=82b0e2de87b61f85
+	- Notes: ArcGIS/MapServer base for the FAA VFR Sectional tiles. Record added 2025-12-04.
+
 ## Performance
 
 The heatmap viewer is optimized for large datasets with:

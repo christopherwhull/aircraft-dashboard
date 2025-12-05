@@ -32,16 +32,42 @@ except ImportError:
 	CONFIG_READER_AVAILABLE = False
 	print("Warning: config_reader not available, using command-line defaults")
 
+# Parse an early flag to request strict UTF-8 console behaviour
+try:
+	_early_parser = argparse.ArgumentParser(add_help=False)
+	_early_parser.add_argument('--utf8-strict', action='store_true')
+	_early_args, _ = _early_parser.parse_known_args()
+	UTF8_STRICT = bool(getattr(_early_args, 'utf8_strict', False))
+except Exception:
+	UTF8_STRICT = False
+
 # Ensure UTF-8 console encoding on Windows to avoid UnicodeEncodeError
 try:
 	if os.name == 'nt':
 		try:
-			# Python 3.7+: reconfigure stdout/stderr to utf-8
-			sys.stdout.reconfigure(encoding='utf-8')
-			sys.stderr.reconfigure(encoding='utf-8')
+			# If the user requested strict UTF-8, enforce it and exit on failure.
+			if UTF8_STRICT:
+				sys.stdout.reconfigure(encoding='utf-8', errors='strict')
+				sys.stderr.reconfigure(encoding='utf-8', errors='strict')
+			else:
+				# Python 3.7+: reconfigure stdout/stderr to utf-8 and replace invalid chars
+				sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+				sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 		except Exception:
-			# Fallback: set PYTHONIOENCODING for subprocesses (best-effort)
-			os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
+			if UTF8_STRICT:
+				# In strict mode, fail fast so the user can enable a UTF-8 terminal
+				print('utf8-strict: console does not support UTF-8 (strict). Exiting.')
+				sys.exit(1)
+			# Best-effort fallback: set PYTHONIOENCODING for subprocesses and
+			# wrap the current stdout/stderr to force UTF-8 with replacement.
+			os.environ['PYTHONIOENCODING'] = 'utf-8:replace'
+			try:
+				import io
+				sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', newline='\n')
+				sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', newline='\n')
+			except Exception:
+				# If even that fails, continue without raising — prints may still fail.
+				pass
 except Exception:
 	pass
 

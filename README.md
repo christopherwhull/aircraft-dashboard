@@ -1,6 +1,8 @@
-# Aircraft Dashboard — Real-time Flight Intelligence for PiAware
+# AirSquawk — Real-time Flight Intelligence for PiAware
 
-Turn raw ADS‑B feeds from a PiAware receiver into actionable, real-time flight intelligence. Aircraft Dashboard provides live tracking, fleet and airline analytics, historical playback, and reception analysis—on-premise or in the cloud—making it ideal for hobbyists, operators, small airports, and engineers who need reliable, low-latency situational awareness and flexible analytics.
+![AirSquawk Logo](public/media/airsquak.jpg)
+
+Turn raw ADS‑B feeds from a PiAware receiver into actionable, real-time flight intelligence. AirSquawk provides live tracking, fleet and airline analytics, historical playback, and reception analysis—on-premise or in the cloud—making it ideal for hobbyists, operators, small airports, and engineers who need reliable, low-latency situational awareness and flexible analytics.
 
 Why it matters:
 - Real-time situational awareness: See live aircraft positions and telemetry with minimal latency.

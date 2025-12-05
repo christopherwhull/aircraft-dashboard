@@ -21,8 +21,11 @@ python tools/test_s3_structure.py --gaps-only
 Start and pre-cache aviation chart tiles for offline or low-latency use:
 
 ```powershell
-# Start the local tile proxy (listens on port 3003)
-npm run proxy:tiles
+# Start all development services (server, GeoTIFF, tile-proxy)
+python tools/manage_services.py start
+
+# Start and wait for health endpoints (wait up to 30s)
+python tools/manage_services.py start --wait --timeout 30
 
 # Pre-cache tiles (proxy must be running in a separate terminal)
 npm run precache:tiles

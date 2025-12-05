@@ -3,16 +3,17 @@ const fs = require('fs');
 const path = require('path');
 const yauzl = require('yauzl');
 
-// Accept overrides via env vars
-const S3_ENDPOINT = process.env.S3_ENDPOINT || 'http://localhost:9000';
-const S3_REGION = process.env.AWS_REGION || process.env.S3_REGION || 'us-east-1';
-const S3_ACCESS_KEY = process.env.AWS_ACCESS_KEY_ID || process.env.S3_ACCESS_KEY || 'minioadmin';
-const S3_SECRET_KEY = process.env.AWS_SECRET_ACCESS_KEY || process.env.S3_SECRET_KEY || 'minioadmin123';
-const S3_FORCE_PATH_STYLE = (process.env.S3_FORCE_PATH_STYLE || 'true') === 'true';
+const config = require('../config');
+// Use S3 settings from config.js only
+const S3_ENDPOINT = (config && config.s3 && config.s3.endpoint) ? config.s3.endpoint : 'http://localhost:9000';
+const S3_REGION = (config && config.s3 && config.s3.region) ? config.s3.region : 'us-east-1';
+const S3_ACCESS_KEY = (config && config.s3 && config.s3.credentials && config.s3.credentials.accessKeyId) ? config.s3.credentials.accessKeyId : 'minioadmin';
+const S3_SECRET_KEY = (config && config.s3 && config.s3.credentials && config.s3.credentials.secretAccessKey) ? config.s3.credentials.secretAccessKey : 'minioadmin123';
+const S3_FORCE_PATH_STYLE = (config && typeof config.s3.forcePathStyle !== 'undefined') ? !!config.s3.forcePathStyle : true;
 
-const BUCKET_NAME = process.env.MEDIA_PACK_BUCKET || 'media-pack-test';
-const MEDIA_PACK_DIR = process.env.MEDIA_PACK_DIR || path.join(__dirname, '..', 'media-packs');
-const DRY_RUN = !!process.env.DRY_RUN || process.argv.includes('--dry-run');
+const BUCKET_NAME = (config && config.buckets && config.buckets.readBucket) ? config.buckets.readBucket : 'media-pack-test';
+const MEDIA_PACK_DIR = (config && config.tools && config.tools.mediaPackDir) ? config.tools.mediaPackDir : path.join(__dirname, '..', 'media-packs');
+const DRY_RUN = (config && config.tools && !!config.tools.dryRun) || process.argv.includes('--dry-run');
 
 const s3 = new S3Client({
     endpoint: S3_ENDPOINT,

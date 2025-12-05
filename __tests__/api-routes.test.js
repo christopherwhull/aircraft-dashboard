@@ -1,7 +1,9 @@
-// Ensure test env vars are set before requiring server modules
-process.env.GIT_COMMIT_OVERRIDE = process.env.GIT_COMMIT_OVERRIDE || 'test';
-process.env.GIT_DIRTY_OVERRIDE = process.env.GIT_DIRTY_OVERRIDE || 'false';
-process.env.NODE_ENV = process.env.NODE_ENV || 'test';
+// Ensure config overrides are set before requiring server modules
+const cfg = require('../config');
+if (!cfg.server) cfg.server = {};
+cfg.server.gitCommitOverride = cfg.server.gitCommitOverride || 'test';
+if (typeof cfg.server.gitDirtyOverride === 'undefined') cfg.server.gitDirtyOverride = false;
+cfg.server.env = cfg.server.env || 'test';
 
 const request = require('supertest');
 const express = require('express');
@@ -87,14 +89,18 @@ describe('API Routes', () => {
   describe('POST /api/restart', () => {
     let previousToken;
     beforeAll(() => {
-      previousToken = process.env.RESTART_API_TOKEN;
+      const cfg = require('../config');
+      previousToken = cfg.server && cfg.server.restartToken ? cfg.server.restartToken : '';
     });
     afterAll(() => {
-      process.env.RESTART_API_TOKEN = previousToken;
+      const cfg = require('../config');
+      if (!cfg.server) cfg.server = {};
+      cfg.server.restartToken = previousToken;
     });
 
     test('should reject when no token configured', async () => {
-      process.env.RESTART_API_TOKEN = '';
+      // Ensure restart token is empty in config
+      const cfg = require('../config'); if (!cfg.server) cfg.server = {}; cfg.server.restartToken = '';
       const app = express();
       app.use(express.json());
       setupApiRoutes(app, mockS3, mockReadBucket, mockWriteBucket, mockGetInMemoryState, mockCache, mockPositionCache);
@@ -105,7 +111,7 @@ describe('API Routes', () => {
     });
 
     test('should authorize with token and spawn restart', async () => {
-      process.env.RESTART_API_TOKEN = 'unittesttoken';
+      const cfg = require('../config'); if (!cfg.server) cfg.server = {}; cfg.server.restartToken = 'unittesttoken';
       const spawn = require('child_process').spawn;
       const mockSpawn = jest.spyOn(require('child_process'), 'spawn').mockImplementation(() => ({ unref: () => {} }));
       const exitSpy = jest.spyOn(process, 'exit').mockImplementation(() => {});
