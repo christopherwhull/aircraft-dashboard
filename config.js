@@ -14,8 +14,19 @@ module.exports = {
 
     // --- Data Source Configuration ---
     dataSource: {
-        piAwareUrl: process.env.PIAWARE_URL || 'http://192.168.0.178:8080/data/aircraft.json',
+        piAwareUrl: 'http://192.168.0.178:8080/data/aircraft.json',
         receiverTimeout: 5000, // milliseconds
+    },
+
+    // --- Receiver Configuration ---
+    receiver: {
+        // Unique identifier for this receiver/tracker instance
+        // Used for S3 prefix separation in multi-tracker setups
+        id: process.env.RECEIVER_ID || 'primary',
+        // Optional receiver location for identification
+        location: process.env.RECEIVER_LOCATION || '',
+        // Optional receiver description
+        description: process.env.RECEIVER_DESCRIPTION || '',
     },
 
     // --- S3 / MinIO Configuration ---

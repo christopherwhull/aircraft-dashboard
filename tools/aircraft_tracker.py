@@ -1912,11 +1912,20 @@ def upload_minute_file_to_s3(bucket_name: str, aircraft_buffer: List[dict]) -> N
         return  # Nothing to upload
     
     try:
-        # Generate minute filename with optional prefix
+        # Generate minute filename with receiver-specific prefix for multi-tracker concurrency
         now = datetime.now(timezone.utc)
         from config_reader import get_config
         config = get_config()
-        s3_prefix = config.get('s3_prefix', '')
+        base_prefix = config.get('s3_prefix', '')
+        receiver_id = config.get('receiver_id', 'primary')
+
+        # Create receiver-specific prefix: base_prefix/receiver_id/
+        # This prevents conflicts when multiple trackers write to the same S3 bucket
+        if receiver_id and receiver_id != 'primary':
+            s3_prefix = f"{base_prefix}receivers/{receiver_id}/"
+        else:
+            s3_prefix = base_prefix
+
         minute_filename = f"{s3_prefix}piaware_aircraft_log_{now.strftime('%Y%m%d_%H%M')}.json"
         
         # Create JSON content from the provided buffer
@@ -2556,7 +2565,15 @@ Benefits:
     from config_reader import get_config
     config = get_config()
     s3_bucket = config.get('s3_bucket', 'aircraft-data')
-    s3_prefix = config.get('s3_prefix', '')
+    base_prefix = config.get('s3_prefix', '')
+    receiver_id = config.get('receiver_id', 'primary')
+
+    # Create receiver-specific prefix for display
+    if receiver_id and receiver_id != 'primary':
+        s3_prefix = f"{base_prefix}receivers/{receiver_id}/"
+    else:
+        s3_prefix = base_prefix
+
     print(f"S3 log path: s3://{s3_bucket}/{s3_prefix}piaware_aircraft_log_*.json")
     def calculate_s3_log_size(bucket_name: str, prefix: str) -> float:
         """Calculate total size of all aircraft log files in S3 bucket (MB)."""

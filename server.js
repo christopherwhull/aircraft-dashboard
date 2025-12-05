@@ -13,7 +13,7 @@ const { registration_from_hexid } = require('./lib/registration');
 const { setupApiRoutes } = require('./lib/api-routes');
 const { computeAirlineStatsData, computeSquawkTransitionsData, computeHistoricalStatsData, remakeHourlyRollup } = require('./lib/aggregators');
 const logger = require('./lib/logger');
-const { listS3Files, downloadAndParseS3File } = require('./lib/s3-helpers');
+const { listS3Files, listAircraftFiles, downloadAndParseS3File } = require('./lib/s3-helpers');
 const PositionCache = require('./lib/position-cache');
 const aircraftDB = require('./lib/aircraft-database');
 const aircraftTypesDB = require('./lib/aircraft-types-db');
@@ -554,12 +554,16 @@ async function buildHourlyPositionsFromS3() {
                 continue; // Skip if already built and not in rebuild window
             }
             
-            // List all minute files for this hour from both buckets
-            const writeFiles = (await listS3Files(s3, WRITE_BUCKET_NAME, 'data/piaware_aircraft_log') || []).map(f => ({ ...f, bucket: WRITE_BUCKET_NAME }));
-            const readFiles = (await listS3Files(s3, BUCKET_NAME, 'data/piaware_aircraft_log') || []).map(f => ({ ...f, bucket: BUCKET_NAME }));
+            // List all minute files for this hour from both buckets with multi-receiver support
+            const writeFiles = (await listAircraftFiles(s3, WRITE_BUCKET_NAME, 'data/') || []).map(f => ({ ...f, bucket: WRITE_BUCKET_NAME }));
+            const readFiles = (await listAircraftFiles(s3, BUCKET_NAME, 'data/') || []).map(f => ({ ...f, bucket: BUCKET_NAME }));
             const allS3Files = [...writeFiles, ...readFiles];
             const hourMinuteFiles = allS3Files
-                .filter(f => f.Key && f.Key.includes('piaware_aircraft_log'))
+                .filter(f => f.Key && (
+                    f.Key.includes('piaware_aircraft_log') &&
+                    (f.Key.match(/piaware_aircraft_log_\d{8}_\d{4}\.json$/) || // Standard format
+                     f.Key.match(/receivers\/[^\/]+\/piaware_aircraft_log_\d{8}_\d{4}\.json$/)) // Receiver-specific format
+                ))
                 .filter(f => {
                     const fileTime = new Date(f.LastModified).getTime();
                     return fileTime >= hourStart && fileTime < hourEnd;
@@ -690,16 +694,21 @@ async function buildFlightsFromS3() {
         
         // List ALL minute files and filter by record timestamps (not file modification time)
         // This is critical - files may have old modification times but contain recent data
-        const s3Files = await listS3Files(s3, WRITE_BUCKET_NAME, 'data/piaware_aircraft_log'); // Use prefix, but fetch ALL pages
+        // Now supports multi-receiver prefixes
+        const s3Files = await listAircraftFiles(s3, WRITE_BUCKET_NAME, 'data/'); // Use base prefix, includes all receivers
         globalCache.s3Reads = (globalCache.s3Reads || 0) + 1;
         globalCache.lastRead = Date.now();
         logger.info(`[buildFlights] Listed ${(s3Files || []).length} total files in ${WRITE_BUCKET_NAME}`);
         
         const allMinuteFiles = (s3Files || [])
-            .filter(f => f.Key && f.Key.includes('piaware_aircraft_log'))
+            .filter(f => f.Key && (
+                f.Key.includes('piaware_aircraft_log') &&
+                (f.Key.match(/piaware_aircraft_log_\d{8}_\d{4}\.json$/) || // Standard format
+                 f.Key.match(/receivers\/[^\/]+\/piaware_aircraft_log_\d{8}_\d{4}\.json$/)) // Receiver-specific format
+            ))
             .sort((a, b) => new Date(a.LastModified) - new Date(b.LastModified));
-        
-        logger.info(`[buildFlights] Found ${allMinuteFiles.length} minute files matching pattern 'piaware_aircraft_log'`);
+
+        logger.info(`[buildFlights] Found ${allMinuteFiles.length} minute files matching aircraft log patterns`);
         
         if (allMinuteFiles.length === 0) {
             logger.info('No minute files found for flight building');
