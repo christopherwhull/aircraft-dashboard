@@ -32,6 +32,7 @@ def get_config():
     # S3 settings
     s3 = config.get('s3', {})
     buckets = config.get('buckets', {})
+    receiver = config.get('receiver', {})
     return {
         's3_endpoint': s3.get('endpoint', 'http://localhost:9000'),
         's3_access_key': s3.get('credentials', {}).get('accessKeyId', 'minioadmin'),
@@ -39,6 +40,9 @@ def get_config():
         's3_bucket': buckets.get('readBucket', 'aircraft-data'),
         's3_write_bucket': buckets.get('writeBucket', 'aircraft-data'),
         's3_prefix': buckets.get('s3Prefix', ''),
+        'receiver_id': receiver.get('id', 'primary'),
+        'receiver_location': receiver.get('location', ''),
+        'receiver_description': receiver.get('description', ''),
         's3_kml_bucket': os.environ.get('S3_KML_BUCKET', 'output-kmls'),
         's3_flightaware_bucket': os.environ.get('S3_FLIGHTAWARE_BUCKET', 'flighturls'),
         's3_reception_bucket': os.environ.get('S3_RECEPTION_BUCKET', 'piaware-reception-data'),
