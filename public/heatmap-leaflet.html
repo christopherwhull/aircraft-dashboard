@@ -1117,26 +1117,65 @@
                         try {
                             const pts = (res && res.points) || [];
                                 if (pts.length >= 2) {
-                                let color = '#00ffff';
-                                const firstAlt = pts[0] && typeof pts[0].alt === 'number' ? pts[0].alt : null;
-                                const lastAlt = pts[pts.length - 1] && typeof pts[pts.length - 1].alt === 'number' ? pts[pts.length - 1].alt : null;
-                                let hasClimbDesc = false;
-                                if (firstAlt !== null && lastAlt !== null) {
-                                    const delta = lastAlt - firstAlt;
-                                    const thresh = 50;
-                                    if (delta > thresh) { color = 'green'; hasClimbDesc = true; }
-                                    else if (delta < -thresh) { color = 'red'; hasClimbDesc = true; }
+                                // Create colored segments based on vertical rate
+                                const segments = [];
+                                let currentSegment = {
+                                    points: [pts[0]],
+                                    color: getVerticalRateColor(pts[0].vertical_rate || 0)
+                                };
+
+                                for (let i = 1; i < pts.length; i++) {
+                                    const point = pts[i];
+                                    const color = getVerticalRateColor(point.vertical_rate || 0);
+
+                                    if (color === currentSegment.color) {
+                                        // Continue current segment
+                                        currentSegment.points.push(point);
+                                    } else {
+                                        // Start new segment
+                                        segments.push(currentSegment);
+                                        currentSegment = {
+                                            points: [point],
+                                            color: color
+                                        };
+                                    }
                                 }
-                                if (!hasClimbDesc) {
-                                    try { const ang = maxTrackAngularChange(pts); if (ang > 5) color = 'yellow'; } catch (e) {}
-                                }
-                                const latlngs = densifyTrackPoints(pts, 0.1);
-                                const poly = L.polyline(latlngs, { color: color, weight: 2, opacity: 0.9, pane: 'livePane', interactive: false });
-                                // add small start/end markers for live tracks
-                                const start = L.circleMarker(latlngs[0], { radius: 2, fillColor: '#00ff00', color: '#006600', weight: 1, fillOpacity: 0.9, pane: 'livePane' });
-                                const end = L.circleMarker(latlngs[latlngs.length - 1], { radius: 2, fillColor: '#ff0000', color: '#660000', weight: 1, fillOpacity: 0.9, pane: 'livePane' });
-                                const lg = L.layerGroup([poly, start, end]);
-                                liveTracksLayer.addLayer(lg);
+                                segments.push(currentSegment); // Add final segment
+
+                                // Draw each segment
+                                segments.forEach(segment => {
+                                    if (segment.points.length >= 2) {
+                                        const latlngs = densifyTrackPoints(segment.points, 0.1);
+                                        const poly = L.polyline(latlngs, {
+                                            color: segment.color,
+                                            weight: 3,
+                                            opacity: 0.9,
+                                            pane: 'livePane',
+                                            interactive: false
+                                        });
+                                        liveTracksLayer.addLayer(poly);
+                                    }
+                                });
+
+                                // Add start/end markers
+                                const start = L.circleMarker([pts[0].lat, pts[0].lon], {
+                                    radius: 3,
+                                    fillColor: '#00ff00',
+                                    color: '#006600',
+                                    weight: 1,
+                                    fillOpacity: 0.9,
+                                    pane: 'livePane'
+                                });
+                                const end = L.circleMarker([pts[pts.length - 1].lat, pts[pts.length - 1].lon], {
+                                    radius: 3,
+                                    fillColor: '#ff0000',
+                                    color: '#660000',
+                                    weight: 1,
+                                    fillOpacity: 0.9,
+                                    pane: 'livePane'
+                                });
+                                liveTracksLayer.addLayer(start);
+                                liveTracksLayer.addLayer(end);
                             }
                         } catch (e) {}
                     });
@@ -2252,24 +2291,67 @@
                                 const { points } = await fetchTrackWithCache(hex, minutes);
                                 if (points.length > 0) {
                                     const lg = L.layerGroup();
-                                    // color persist polyline by climb/descent if altitude available: green for climb, red for descent, yellow for static
-                                    let color = 'yellow'; // Default to yellow for static/level flight
-                                    const firstAlt = points[0] && typeof points[0].alt === 'number' ? points[0].alt : null;
-                                    const lastAlt = points[points.length - 1] && typeof points[points.length - 1].alt === 'number' ? points[points.length - 1].alt : null;
-                                    if (firstAlt !== null && lastAlt !== null) {
-                                        const delta = lastAlt - firstAlt;
-                                        const thresh = 50;
-                                        if (delta > thresh) color = 'green'; // Climbing
-                                        else if (delta < -thresh) color = 'red'; // Descending
-                                        // else remains yellow for static/level flight
+
+                                    // Create colored segments based on vertical rate
+                                    const segments = [];
+                                    let currentSegment = {
+                                        points: [points[0]],
+                                        color: getVerticalRateColor(points[0].vertical_rate || 0)
+                                    };
+
+                                    for (let i = 1; i < points.length; i++) {
+                                        const point = points[i];
+                                        const color = getVerticalRateColor(point.vertical_rate || 0);
+
+                                        if (color === currentSegment.color) {
+                                            // Continue current segment
+                                            currentSegment.points.push(point);
+                                        } else {
+                                            // Start new segment
+                                            segments.push(currentSegment);
+                                            currentSegment = {
+                                                points: [point],
+                                                color: color
+                                            };
+                                        }
                                     }
-                                    const latlngs = densifyTrackPoints(points, 0.1);
-                                    const poly = L.polyline(latlngs, { color: color, weight: 3, opacity: 0.95, pane: 'persistentPane', interactive: false });
-                                    const start = L.circleMarker(latlngs[0], { radius: 4, fillColor: '#00ff00', color: '#006600', weight: 1, fillOpacity: 0.95, pane: 'persistentPane' });
-                                    const end = L.circleMarker(latlngs[latlngs.length - 1], { radius: 4, fillColor: '#ff0000', color: '#660000', weight: 1, fillOpacity: 0.95, pane: 'persistentPane' });
-                                    lg.addLayer(poly);
+                                    segments.push(currentSegment); // Add final segment
+
+                                    // Draw each segment
+                                    segments.forEach(segment => {
+                                        if (segment.points.length >= 2) {
+                                            const latlngs = densifyTrackPoints(segment.points, 0.1);
+                                            const poly = L.polyline(latlngs, {
+                                                color: segment.color,
+                                                weight: 4,
+                                                opacity: 0.95,
+                                                pane: 'persistentPane',
+                                                interactive: false
+                                            });
+                                            lg.addLayer(poly);
+                                        }
+                                    });
+
+                                    // Add start/end markers
+                                    const start = L.circleMarker([points[0].lat, points[0].lon], {
+                                        radius: 4,
+                                        fillColor: '#00ff00',
+                                        color: '#006600',
+                                        weight: 1,
+                                        fillOpacity: 0.95,
+                                        pane: 'persistentPane'
+                                    });
+                                    const end = L.circleMarker([points[points.length - 1].lat, points[points.length - 1].lon], {
+                                        radius: 4,
+                                        fillColor: '#ff0000',
+                                        color: '#660000',
+                                        weight: 1,
+                                        fillOpacity: 0.95,
+                                        pane: 'persistentPane'
+                                    });
                                     lg.addLayer(start);
                                     lg.addLayer(end);
+
                                     persistentTracks.set(hex, lg);
                                     persistentTracksLayer.addLayer(lg);
                                     updatePersistedIndicator();
@@ -2507,6 +2589,25 @@
                 }
                 return maxDelta;
             } catch (e) { return 0; }
+        }
+
+        // Get color based on vertical rate (feet per minute)
+        // Returns: 'red' for descending, 'green' for climbing, 'yellow' for level flight
+        function getVerticalRateColor(verticalRate) {
+            const rate = Math.abs(verticalRate || 0);
+
+            // Thresholds for determining flight phase (feet per minute)
+            const levelThreshold = 200;  // ±200 fpm considered level
+            const climbThreshold = 500;  // >500 fpm climbing
+            const descentThreshold = 500; // <-500 fpm descending
+
+            if (verticalRate > climbThreshold) {
+                return 'green';  // Climbing
+            } else if (verticalRate < -descentThreshold) {
+                return 'red';    // Descending
+            } else {
+                return 'yellow'; // Level flight
+            }
         }
 
         // Get color based on intensity
