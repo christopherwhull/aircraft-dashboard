@@ -3,6 +3,9 @@
  * All configurable parameters in one place
  */
 
+// Load environment variables from .env file
+require('dotenv').config();
+
 module.exports = {
     // --- Server Configuration ---
     server: {
@@ -16,6 +19,11 @@ module.exports = {
     dataSource: {
         piAwareUrl: process.env.PIAWARE_URL || 'http://192.168.0.178:8080/data/aircraft.json',
         receiverTimeout: 5000, // milliseconds
+    },
+
+    // --- ArcGIS Configuration ---
+    arcgis: {
+        apiKey: process.env.ARC_GIS_API_KEY,
     },
 
     // --- S3 / MinIO Configuration ---

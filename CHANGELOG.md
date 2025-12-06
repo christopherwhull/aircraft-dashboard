@@ -2,6 +2,23 @@
 
 All notable changes to the Aircraft Dashboard project will be documented in this file.
 
+## [2.1.0] - 2025-12-06
+
+### Added
+- **Enhanced Heatmap Visualization**: Aircraft icons now dynamically color-code based on vertical rate (green for climbing >500 ft/min, red for descending <-300 ft/min)
+- **Improved Aircraft Popups**: Added aircraft type display and changed "seen" to "age" showing seconds since last update
+- **Popup Background Colors**: Light green background for climbing aircraft, light red for descending aircraft
+- **Extended Track Indicators**: Blue dots now display for 15 seconds (up from 3 seconds) when aircraft change heading significantly
+- **Mandatory Long Tracks**: Historical flight tracks are now always enabled and update every 15 seconds for all visible aircraft
+
+### Changed
+- **Squawk Transitions Default**: Changed default time window from 24 hours to 10 minutes (600 seconds) for more responsive squawk change monitoring
+
+### Technical Details
+- **Icon Coloring**: CSS filters applied to SVG aircraft icons based on calculated vertical rate
+- **Popup Enhancement**: Background colors and additional type information improve aircraft identification
+- **Track Visualization**: Persistent long tracks provide better situational awareness of aircraft movement patterns
+
 ## [2.0.0] - 2025-12-02
 
 ### Added
@@ -26,7 +43,7 @@ All notable changes to the Aircraft Dashboard project will be documented in this
 - **Database Caching**: In-memory caching of S3 databases for improved performance and reduced API calls
 
 ### Changed
-- **Aircraft Tracker Enrichment**: Modified `aircraft_tracker.py` to load and use S3 aircraft type database as primary enrichment source
+- **Aircraft Tracker Enrichment**: Modified `aircraft-tracker.py` to load and use S3 aircraft type database as primary enrichment source
 - **Lookup Functions**: Updated `airline_lookup.py` and `registration_lookup.py` (both root and tools versions) to load from S3 databases
 - **Enrichment Priority**: S3 databases now take precedence over individual ICAO cache files and external API calls
 
@@ -105,13 +122,13 @@ All notable changes to the Aircraft Dashboard project will be documented in this
 - **Comprehensive Linux Documentation**: Added `LINUX_SETUP.md` with complete installation and deployment guide
 - **Docker Support**: Full Docker and docker-compose examples in LINUX_SETUP.md
 - **MinIO Documentation**: Added `MINIO_SETUP.md` with complete installation for all platforms
-- **Automatic Bucket Creation**: Node server now auto-creates S3 buckets on startup (matching aircraft_tracker.py)
+- **Automatic Bucket Creation**: Node server now auto-creates S3 buckets on startup (matching aircraft-tracker.py)
 - **npm Run Scripts**: Added `npm run restart:windows` and `npm run restart:unix` for easy server restart
 
 ### Changed
 - **README.md**: Updated with platform-specific installation guidance and MinIO quick start
 - **restart-server.ps1**: Now uses dynamic project directory instead of hardcoded path
-- **Cross-Platform Ready**: Both Node server and aircraft_tracker.py are fully cross-platform compatible
+- **Cross-Platform Ready**: Both Node server and aircraft-tracker.py are fully cross-platform compatible
 - **Bucket Management**: Both server and tracker verify and create required S3 buckets on startup
 
 ### Technical Details

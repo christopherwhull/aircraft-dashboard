@@ -5,7 +5,7 @@ This directory contains all the utility scripts and tools for the AirSquawk proj
 ## Categories
 
 ### Data Analysis & Processing
-- `aircraft_tracker.py` - Main aircraft tracking script
+- `aircraft-tracker.py` - Main aircraft tracking script
 - `analyze_readonly_source.py` - Analyze readonly data sources
 - `analyze_squawk_local.py` - Analyze squawk codes locally
 - `analyze_squawk_s3.py` - Analyze squawk codes from S3
@@ -133,7 +133,7 @@ Most scripts can be run directly with Node.js or Python:
 node tools/check_airline_stocks.js
 
 # Python tools
-python tools/aircraft_tracker.py
+python tools/aircraft-tracker.py
 
 # Python tools
 python tools/test_all.py
