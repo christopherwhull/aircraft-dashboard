@@ -208,6 +208,32 @@ Returns flight information for multiple aircraft.
 
 **Response:** Similar to `/api/flights` but for specified aircraft.
 
+### GET `/api/track`
+Returns historical track points for an aircraft with vertical rate information for flight phase coloring.
+
+**Parameters:**
+- `hex` (string, required): Aircraft hex identifier
+- `minutes` (number, optional): Minutes to look back (default: 15)
+
+**Response:**
+```json
+{
+  "track": [
+    {
+      "lat": 40.7128,
+      "lon": -74.0060,
+      "alt": 35000,
+      "timestamp": 1700000000000,
+      "vertical_rate": 1200
+    }
+  ]
+}
+```
+
+**Fields:**
+- `vertical_rate`: Vertical speed in feet per minute (positive = climbing, negative = descending)
+- Used by frontend for color-coded track segments: red (descending), green (climbing), yellow (level)
+
 ---
 
 ## Analytics Endpoints
