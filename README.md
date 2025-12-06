@@ -1,6 +1,6 @@
-# Aircraft Dashboard — Real-time Flight Intelligence for PiAware
+# AirSquawk — Real-time Flight Intelligence for PiAware
 
-Turn raw ADS‑B feeds from a PiAware receiver into actionable, real-time flight intelligence. Aircraft Dashboard provides live tracking, fleet and airline analytics, historical playback, and reception analysis—on-premise or in the cloud—making it ideal for hobbyists, operators, small airports, and engineers who need reliable, low-latency situational awareness and flexible analytics.
+Turn raw ADS‑B feeds from a PiAware receiver into actionable, real-time flight intelligence. AirSquawk provides live tracking, fleet and airline analytics, historical playback, and reception analysis—on-premise or in the cloud—making it ideal for hobbyists, operators, small airports, and engineers who need reliable, low-latency situational awareness and flexible analytics.
 
 Why it matters:
 - Real-time situational awareness: See live aircraft positions and telemetry with minimal latency.
@@ -448,7 +448,7 @@ aircraft-data/ (read bucket - historical data)
 
 ### Media Packs
 
-**Media packs** are compressed ZIP archives containing all the visual and reference data needed for the Aircraft Dashboard system. They serve as complete, self-contained data packages for distribution and deployment.
+**Media packs** are compressed ZIP archives containing all the visual and reference data needed for the AirSquawk system. They serve as complete, self-contained data packages for distribution and deployment.
 
 #### What's Included in a Media Pack
 

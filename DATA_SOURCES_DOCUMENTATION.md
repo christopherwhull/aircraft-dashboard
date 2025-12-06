@@ -1,7 +1,7 @@
-# Aircraft Dashboard - Data Sources & Architecture Documentation
+# AirSquawk - Data Sources & Architecture Documentation
 
 ## Overview
-The Aircraft Dashboard heatmap provides real-time and historical flight tracking with multiple data sources, a local tile proxy system, and a 1 nautical mile grid layout system.
+The AirSquawk heatmap provides real-time and historical flight tracking with multiple data sources, a local tile proxy system, and a 1 nautical mile grid layout system.
 
 ## Data Sources
 

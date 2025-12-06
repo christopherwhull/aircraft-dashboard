@@ -57,7 +57,7 @@ def test(tracker: Tracker, name: str, endpoint: str, validator):
     # Some endpoints (/) return HTML, handle specially
     is_html_check = endpoint == '/'
     if is_html_check:
-        if "<title>New Aircraft Dashboard</title>" in text:
+        if "<title>AirSquawk</title>" in text:
             tracker.record(name, True, "Dashboard HTML loaded successfully")
             print(f"  ✅ PASSED: Dashboard HTML loaded successfully ({duration_ms}ms)")
         else:

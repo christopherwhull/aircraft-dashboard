@@ -1,6 +1,6 @@
 # Logo Management
 
-Aircraft Dashboard includes a comprehensive logo management system for airlines and aircraft manufacturers. This page covers the logo media pack generator, logo storage, and how logos are used throughout the system.
+AirSquawk includes a comprehensive logo management system for airlines and aircraft manufacturers. This page covers the logo media pack generator, logo storage, and how logos are used throughout the system.
 
 ## Logo Media Pack Generator
 

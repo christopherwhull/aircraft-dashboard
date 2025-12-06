@@ -1,6 +1,6 @@
-# Aircraft Dashboard - Python Scripts
+# AirSquawk - Python Scripts
 
-This directory contains Python utilities for managing and testing the Aircraft Dashboard server. All PowerShell scripts have been converted to Python for cross-platform compatibility.
+This directory contains Python utilities for managing and testing the AirSquawk server. All PowerShell scripts have been converted to Python for cross-platform compatibility.
 
 ## Scripts Overview
 

@@ -75,7 +75,7 @@ s3://media-pack-test/logos/BOEING.png
 ## Example Output
 
 ```
-Aircraft Dashboard Media Pack S3 Uploader
+AirSquawk Media Pack S3 Uploader
 ==========================================
 Target bucket: media-pack-test
 

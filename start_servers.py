@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Aircraft Dashboard Server Manager
+AirSquawk Server Manager
 Starts the Node.js API server (port 3002) and tile proxy server (port 3004) in separate console windows.
 """
 
@@ -58,7 +58,7 @@ def start_server_in_new_window(command, title, cwd=None):
 
 def main():
     """Main function to start both servers"""
-    print("🚀 Aircraft Dashboard Server Manager")
+    print("🚀 AirSquawk Server Manager")
     print("=" * 40)
 
     # Get the directory where this script is located
@@ -89,7 +89,7 @@ def main():
     # Start API server (port 3002)
     print("\n📡 Starting API Server (port 3002)...")
     api_cmd = ['node', 'server.js']
-    api_process = start_server_in_new_window(api_cmd, "Aircraft Dashboard API Server", script_dir)
+    api_process = start_server_in_new_window(api_cmd, "AirSquawk API Server", script_dir)
     if api_process:
         processes.append(('API Server', api_process))
 
@@ -99,7 +99,7 @@ def main():
     # Start tile proxy server (port 3004)
     print("\n🗺️  Starting Tile Proxy Server (port 3004)...")
     proxy_cmd = ['node', 'tile-proxy-server.js']
-    proxy_process = start_server_in_new_window(proxy_cmd, "Aircraft Dashboard Tile Proxy", script_dir)
+    proxy_process = start_server_in_new_window(proxy_cmd, "AirSquawk Tile Proxy", script_dir)
     if proxy_process:
         processes.append(('Tile Proxy Server', proxy_process))
 

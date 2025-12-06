@@ -1,8 +1,8 @@
-# Aircraft Dashboard API Documentation
+# AirSquawk API Documentation
 
 ## Overview
 
-The Aircraft Dashboard provides a comprehensive REST API for accessing live and historical flight data, aircraft information, and system status. All endpoints return JSON responses unless otherwise noted.
+The AirSquawk provides a comprehensive REST API for accessing live and historical flight data, aircraft information, and system status. All endpoints return JSON responses unless otherwise noted.
 
 ## Base URL
 ```

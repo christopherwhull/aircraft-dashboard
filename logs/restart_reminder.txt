@@ -1,0 +1,6 @@
+[2025-12-05 20:00:19] Reminder: Run the project test suite after a restart:
+  - Run `npm test` (jest) or `node tools/test-all.js` for full checks.
+  - Test helpers and diagnostics live in the `tools/` folder.
+[2025-12-05 20:51:09] Reminder: Run the project test suite after a restart:
+  - Run `npm test` (jest) or `node tools/test-all.js` for full checks.
+  - Test helpers and diagnostics live in the `tools/` folder.
