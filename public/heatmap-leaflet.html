@@ -748,7 +748,7 @@
         // Airline name to code mapping for logo lookup
         const airlineNameToCode = new Map(); // name -> code
         // Vertical rate tracking for color coding aircraft
-        const verticalRateCache = new Map(); // hex -> { altitude, timestamp, verticalRate }
+        const verticalRateCache = new Map(); // hex -> { altitude, timestamp }
 
         async function fetchAircraftInfo(hex) {
             if (!hex) return null;
@@ -1468,7 +1468,7 @@
                 const prevData = verticalRateCache.get(hexKey);
                 if (prevData && prevData.altitude && prevData.timestamp) {
                     const timeDiff = (currentTime - prevData.timestamp) / 1000; // seconds
-                    if (timeDiff > 0 && timeDiff < 300) { // Only calculate if within 5 minutes
+                    if (timeDiff > 30 && timeDiff < 300) { // Only calculate if between 30 seconds and 5 minutes
                         const altDiff = altNum - prevData.altitude; // feet
                         verticalRate = (altDiff / timeDiff) * 60; // feet per minute
                     }
@@ -1476,8 +1476,7 @@
                 // Update cache
                 verticalRateCache.set(hexKey, {
                     altitude: altNum,
-                    timestamp: currentTime,
-                    verticalRate: verticalRate
+                    timestamp: currentTime
                 });
             }
 
@@ -1821,7 +1820,7 @@
             let color = '#ff3300'; // default red
             if (verticalRate > 500) {
                 color = '#00ff00'; // green for climbing
-            } else if (verticalRate < -500) {
+            } else if (verticalRate < -300) {
                 color = '#ff0000'; // red for descending
             } else {
                 color = '#9900ff'; // purple for level flight
@@ -2031,7 +2030,7 @@
                             const prevData = verticalRateCache.get(hex);
                             if (prevData) {
                                 const timeDiff = (now - prevData.timestamp) / 1000; // seconds
-                                if (timeDiff > 0 && timeDiff < 300) { // within 5 minutes
+                                if (timeDiff > 30 && timeDiff < 300) { // between 30 seconds and 5 minutes
                                     const altDiff = alt - prevData.altitude; // feet
                                     verticalRate = (altDiff / timeDiff) * 60; // feet per minute
                                 }
