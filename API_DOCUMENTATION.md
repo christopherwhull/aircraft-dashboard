@@ -262,7 +262,9 @@ Returns statistics grouped by airline.
 Returns squawk code transition data.
 
 **Parameters:**
-- `hours` (number, optional): Hours to look back (default: 24)
+- `hours` (number, optional): Hours to look back (default: 0.1667, approximately 10 minutes)
+- `startTime` (number, optional): Start timestamp in milliseconds
+- `endTime` (number, optional): End timestamp in milliseconds
 
 **Response:**
 ```json
@@ -476,6 +478,32 @@ Returns historical statistics for a time range.
 ### Rate Limiting
 Most endpoints support reasonable request rates. High-frequency polling should implement client-side caching.
 
+---
+
+## Heatmap Visualization Features
+
+The heatmap interface provides advanced visual indicators for aircraft status and movement:
+
+### Aircraft Icon Colors
+Aircraft icons are dynamically colored based on vertical movement:
+- **Green**: Climbing aircraft (>500 ft/min vertical rate)
+- **Red**: Descending aircraft (<-300 ft/min vertical rate)
+- **Orange**: Level flight or unknown vertical rate
+
+### Popup Display
+Aircraft information popups include:
+- **Type**: Aircraft type code (e.g., B738, A320)
+- **Age**: Time since last update in seconds (e.g., "45s ago")
+- **Background Color**: Light green for climbing, light red for descending
+
+### Track Change Indicators
+- **Blue dots**: Appear for 15 seconds when aircraft significantly change heading (>5°)
+- **Yellow dots**: Appear for 4 seconds when aircraft change squawk codes
+
+### Long Tracks
+- Historical flight tracks are always enabled and update every 15 seconds
+- Shows aircraft paths for all visible aircraft on the map
+
 ## Error Responses
 
 All endpoints return standard HTTP status codes:
@@ -500,3 +528,9 @@ Real-time updates are available via WebSocket connections for live position data
 - **v1.1**: Added batch endpoints and improved caching
 - **v1.2**: Enhanced analytics and reception analysis
 - **v1.3**: Added logo serving and airline database endpoints
+- **v1.4**: Heatmap visualization enhancements:
+  - Aircraft icons colored by vertical rate (green/red)
+  - Enhanced popup displays with type and age information
+  - Improved track change indicators
+  - Mandatory long tracks with 15-second updates
+  - Squawk transitions default changed to 10 minutes

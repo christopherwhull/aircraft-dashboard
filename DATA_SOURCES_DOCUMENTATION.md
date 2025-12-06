@@ -140,7 +140,7 @@ The AirSquawk heatmap provides real-time and historical flight tracking with mul
 ## Data Flow Architecture
 
 ### Real-time Pipeline
-1. **Aircraft Tracker** (`tools/aircraft_tracker.py`)
+1. **Aircraft Tracker** (`tools/aircraft-tracker.py`)
    - Polls PiAware dump1090 JSON every 5 seconds
    - Enriches aircraft data from S3 databases
    - Uploads to S3/MinIO with minute-by-minute rollup
@@ -185,7 +185,7 @@ The AirSquawk heatmap provides real-time and historical flight tracking with mul
 ## Configuration Files
 - `config.js`: Main server configuration (S3 endpoints, ports, etc.)
 - `tile-proxy-server.js`: Tile proxy settings
-- `aircraft_tracker.py`: Data collection parameters
+- `aircraft-tracker.py`: Data collection parameters
 - Environment variables for all services
 
 ## Monitoring & Health Checks

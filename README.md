@@ -60,7 +60,7 @@ Why it matters:
 - **Logo Management System** - Comprehensive airline and manufacturer logo download, preview, and approval workflow with parallel processing
 - **Reception Analysis** - Visualize reception range by bearing and altitude
 - **Squawk Transitions** - Monitor squawk code changes
-- **Heatmap Visualization** - Geographic density of aircraft positions
+- **Heatmap Visualization** - Geographic density of aircraft positions with color-coded icons by vertical rate and enhanced popups
 - **S3 Data Persistence** - Automatic archival of historical data
 
 ## AI Assistant
@@ -253,12 +253,12 @@ Access console at: `http://localhost:9001`
 
 **Console / Unicode**
 
-- The `aircraft_tracker.py` utility prints box-drawing characters for framed output. If your terminal does not use UTF-8, Python may raise a `UnicodeEncodeError`.
+- The `aircraft-tracker.py` utility prints box-drawing characters for framed output. If your terminal does not use UTF-8, Python may raise a `UnicodeEncodeError`.
 - Recommended ways to run with UTF-8 rendering:
-   - `python -X utf8 aircraft_tracker.py` — enable Python's UTF-8 mode
-   - In PowerShell: `chcp 65001` then `python aircraft_tracker.py`
+   - `python -X utf8 aircraft-tracker.py` — enable Python's UTF-8 mode
+   - In PowerShell: `chcp 65001` then `python aircraft-tracker.py`
    - Or set the environment for the session: ``$env:PYTHONIOENCODING='utf-8'`` then run the script
-- The script also supports a strict flag: `python aircraft_tracker.py --utf8-strict` — in strict mode the script will exit if the console cannot be configured for UTF-8. The default behavior is tolerant: unsupported characters are replaced so the script does not crash.
+- The script also supports a strict flag: `python aircraft-tracker.py --utf8-strict` — in strict mode the script will exit if the console cannot be configured for UTF-8. The default behavior is tolerant: unsupported characters are replaced so the script does not crash.
 - **Cache**: Position cache status and statistics
 
 ### Time Controls

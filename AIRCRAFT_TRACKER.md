@@ -51,22 +51,22 @@ docker run -p 9000:9000 -p 9001:9001 minio/minio server /data --console-address 
 
 Basic usage with defaults from `config.js`:
 ```bash
-python aircraft_tracker.py
+python aircraft-tracker.py
 ```
 
 Specify custom PiAware server:
 ```bash
-python aircraft_tracker.py 192.168.1.100:8080
+python aircraft-tracker.py 192.168.1.100:8080
 ```
 
 Override S3 credentials:
 ```bash
-python aircraft_tracker.py --s3-access-key mykey --s3-secret-key mysecret
+python aircraft-tracker.py --s3-access-key mykey --s3-secret-key mysecret
 ```
 
 Read-only mode (no writes):
 ```bash
-python aircraft_tracker.py --read-only
+python aircraft-tracker.py --read-only
 ```
 
 ## Configuration
@@ -89,7 +89,7 @@ The script reads S3 credentials from `config.js` by default, which can be overri
 - `--disable-s3` - Disable S3 uploads
 - `--test-run` - Run for a few iterations and exit
 
-Run `python aircraft_tracker.py --help` for complete options.
+Run `python aircraft-tracker.py --help` for complete options.
 
 ## How It Works
 

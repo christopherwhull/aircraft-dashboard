@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>AirSquawk</title>
+    <title>AIRSQUWK Dashboard</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/esri-leaflet@3.0.10/dist/esri-leaflet.js"></script>
@@ -284,37 +284,8 @@
             </div>
 
             <div class="control-group">
-                <label for="use-external-squawk">
-                    <input type="checkbox" id="use-external-squawk"> Use External Squawk API
-                </label>
-            </div>
-
-            <div class="control-group" style="min-width:260px;">
-                <label for="squawk-api-base">Squawk API Base:</label>
-                <input id="squawk-api-base" type="text" placeholder="https://squawk.example/api" style="width:220px;">
-            </div>
-
-            <div class="control-group">
                 <label for="track-window-input">Track Window (min):</label>
                 <input id="track-window-input" type="number" min="1" max="1440" step="1" value="10" style="width:70px;">
-            </div>
-
-            <div class="control-group">
-                <label for="show-long-tracks">
-                    <input type="checkbox" id="show-long-tracks"> Show Long Tracks
-                </label>
-            </div>
-
-            <div class="control-group">
-                <label for="persist-on-click">
-                    <input type="checkbox" id="persist-on-click"> Persist track on click
-                </label>
-            </div>
-
-            <div class="control-group">
-                <label for="dark-mode">
-                    <input type="checkbox" id="dark-mode"> Dark Mode
-                </label>
             </div>
 
             <div class="control-group">
@@ -447,7 +418,7 @@
         const faaVfrTerminal = L.tileLayer(`${proxyBase}/vfr-terminal/{z}/{x}/{y}`, {
             attribution: '© FAA',
             maxZoom: 12,
-            minZoom: 7,
+            minZoom: 8,
             zIndex: 200,
             opacity: 0.8,
             errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' // transparent 1x1 pixel
@@ -457,7 +428,7 @@
         const faaVfrSectional = L.tileLayer(`${proxyBase}/vfr-sectional/{z}/{x}/{y}`, {
             attribution: '© FAA',
             maxZoom: 12,
-            minZoom: 7,
+            minZoom: 8,
             zIndex: 200,
             opacity: 0.8,
             errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' // transparent 1x1 pixel
@@ -467,7 +438,7 @@
         const faaIfrAreaLow = L.tileLayer(`${proxyBase}/ifr-arealow/{z}/{x}/{y}`, {
             attribution: '© FAA',
             maxZoom: 12,
-            minZoom: 7,
+            minZoom: 8,
             zIndex: 200,
             opacity: 0.8,
             errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' // transparent 1x1 pixel
@@ -477,10 +448,31 @@
         const faaIfrHigh = L.tileLayer(`${proxyBase}/ifr-enroute-high/{z}/{x}/{y}`, {
             attribution: '© FAA',
             maxZoom: 12,
-            minZoom: 7,
+            minZoom: 8,
             zIndex: 200,
             opacity: 0.8,
             errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' // transparent 1x1 pixel
+        });
+
+        // Weather overlay layers from Iowa State University Mesonet
+        const weatherRadarUrl = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png';
+        const surfaceAnalysisUrl = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/sfc_analysis/{z}/{x}/{y}.png';
+        const satelliteWvUrl = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/goes-wv-4km-900913/{z}/{x}/{y}.png';
+
+        const weatherRadar = L.tileLayer(weatherRadarUrl, {
+            attribution: 'Weather © Iowa State University',
+            opacity: 0.25,
+            zIndex: 250
+        });
+        const surfaceAnalysis = L.tileLayer(surfaceAnalysisUrl, {
+            attribution: 'Weather © Iowa State University',
+            opacity: 0.25,
+            zIndex: 251
+        });
+        const satelliteWv = L.tileLayer(satelliteWvUrl, {
+            attribution: 'Weather © Iowa State University',
+            opacity: 0.25,
+            zIndex: 249
         });
 
         // ArcGIS base map layers
@@ -510,6 +502,9 @@
         };
         
         const overlayLayers = {
+            "Weather Radar Internet": weatherRadar,
+            "Surface Analysis Internet": surfaceAnalysis,
+            "Satellite Water Vapor Internet": satelliteWv,
             "FAA VFR Terminal": faaVfrTerminal,
             "FAA VFR Sectional": faaVfrSectional,
             "FAA IFR Area Low": faaIfrAreaLow,
@@ -519,6 +514,21 @@
         osmLayer.addTo(map);
         // Keep a handle to the layers control so we can add overlays once created
         const layersControl = L.control.layers(baseLayers, overlayLayers).addTo(map);
+        
+        // Load ARTCC boundaries from FAA Open Data
+        fetch('https://adds-faa.opendata.arcgis.com/datasets/67885972e4e940b2aa6d74024901c561_0.geojson')
+            .then(response => response.json())
+            .then(data => {
+                const artccLayer = L.geoJSON(data, {
+                    style: {
+                        color: 'red',
+                        weight: 2,
+                        fillOpacity: 0
+                    }
+                });
+                layersControl.addOverlay(artccLayer, "ARTCC Boundaries");
+            })
+            .catch(error => console.error('Failed to load ARTCC boundaries:', error));
         
         // Log when map zoom changes
         map.on('zoomend', () => {
@@ -556,10 +566,6 @@
                 showBorders: document.getElementById('show-borders').checked
                 , showLive: document.getElementById('show-live').checked
                 , trackWindowMinutes: document.getElementById('track-window-input') ? document.getElementById('track-window-input').value : '1'
-                , persistOnClick: document.getElementById('persist-on-click') ? document.getElementById('persist-on-click').checked : false
-                , darkMode: document.getElementById('dark-mode') ? document.getElementById('dark-mode').checked : false
-                , useExternalSquawk: document.getElementById('use-external-squawk') ? document.getElementById('use-external-squawk').checked : false
-                , squawkApiBase: document.getElementById('squawk-api-base') ? document.getElementById('squawk-api-base').value : ''
             };
             setCookie('leafletHeatmapSettings', JSON.stringify(settings));
         }
@@ -580,19 +586,6 @@
                     if (settings.showLive !== undefined) document.getElementById('show-live').checked = settings.showLive;
                     if (settings.trackWindowMinutes !== undefined && document.getElementById('track-window-input')) {
                         document.getElementById('track-window-input').value = settings.trackWindowMinutes;
-                    }
-                    if (settings.persistOnClick !== undefined && document.getElementById('persist-on-click')) {
-                        document.getElementById('persist-on-click').checked = settings.persistOnClick;
-                    }
-                    if (settings.useExternalSquawk !== undefined && document.getElementById('use-external-squawk')) {
-                        document.getElementById('use-external-squawk').checked = settings.useExternalSquawk;
-                    }
-                    if (settings.squawkApiBase !== undefined && document.getElementById('squawk-api-base')) {
-                        document.getElementById('squawk-api-base').value = settings.squawkApiBase;
-                    }
-                    if (settings.darkMode !== undefined && document.getElementById('dark-mode')) {
-                        document.getElementById('dark-mode').checked = settings.darkMode;
-                        try { if (settings.darkMode) document.body.classList.add('dark-mode'); else document.body.classList.remove('dark-mode'); } catch (e) {}
                     }
                 } catch (e) {
                     console.error('!!! CRITICAL ERROR loading settings:', e);
@@ -618,6 +611,27 @@
         } catch (e) {
             console.warn('Failed to auto-start live positions:', e);
         }
+
+        // Always start long tracks polling (mandatory)
+        try {
+            setTimeout(() => { try { startLongTracksPolling(); } catch (e) { console.warn('Failed to start long tracks polling', e); } }, 100);
+        } catch (e) {
+            console.warn('Failed to auto-start long tracks:', e);
+        }
+
+        // Set up weather radar refresh interval (5 minutes)
+        setInterval(() => {
+            const timestamp = Date.now();
+            if (map.hasLayer(weatherRadar)) {
+                weatherRadar.setUrl(weatherRadarUrl + `?t=${timestamp}`);
+            }
+            if (map.hasLayer(surfaceAnalysis)) {
+                surfaceAnalysis.setUrl(surfaceAnalysisUrl + `?t=${timestamp}`);
+            }
+            if (map.hasLayer(satelliteWv)) {
+                satelliteWv.setUrl(satelliteWvUrl + `?t=${timestamp}`);
+            }
+        }, 5 * 60 * 1000);
 
         // Update opacity display
         document.getElementById('opacity').addEventListener('input', (e) => {
@@ -651,55 +665,6 @@
             saveSettings();
             toggleLivePositions();
         });
-
-        // External squawk API controls
-        const useExternalSquawkElem = document.getElementById('use-external-squawk');
-        if (useExternalSquawkElem) {
-            useExternalSquawkElem.addEventListener('change', () => {
-                saveSettings();
-            });
-        }
-        const squawkApiBaseElem = document.getElementById('squawk-api-base');
-        if (squawkApiBaseElem) {
-            squawkApiBaseElem.addEventListener('change', () => {
-                saveSettings();
-            });
-        }
-
-        // Show long tracks toggle
-        const longTracksCheckbox = document.getElementById('show-long-tracks');
-        if (longTracksCheckbox) {
-            longTracksCheckbox.addEventListener('change', () => {
-                saveSettings();
-                try {
-                    if (longTracksCheckbox.checked) {
-                        startLongTracksPolling();
-                    } else {
-                        stopLongTracksPolling();
-                    }
-                } catch (e) { console.warn('Long tracks toggle failed', e); }
-            });
-        }
-
-        // Dark mode toggle
-        const darkModeCheckbox = document.getElementById('dark-mode');
-        if (darkModeCheckbox) {
-            darkModeCheckbox.addEventListener('change', () => {
-                try {
-                    if (darkModeCheckbox.checked) document.body.classList.add('dark-mode');
-                    else document.body.classList.remove('dark-mode');
-                    saveSettings();
-                } catch (e) { console.warn('Dark mode toggle failed', e); }
-            });
-        }
-
-        // Persist-on-click toggle
-        const persistCheckbox = document.getElementById('persist-on-click');
-        if (persistCheckbox) {
-            persistCheckbox.addEventListener('change', () => {
-                saveSettings();
-            });
-        }
 
         function showError(message) {
             const errorDiv = document.getElementById('error');
@@ -788,12 +753,6 @@
         let trackLayer = L.layerGroup();
         let hoverTrackHex = null;
 
-        // Long tracks layer (drawn from /api/track for visible hexes when enabled)
-        let longTracksLayer = L.layerGroup();
-        let longTracksIntervalId = null;
-        const LONG_TRACKS_POLL_MS = 15000; // fetch long tracks every 15s when enabled
-        const LONG_TRACKS_BATCH_SIZE = 8; // chunk size for parallel requests
-
         // Live tracks layer: short recent tracks for currently active flights
         let liveTracksLayer = L.layerGroup();
         let liveTracksIntervalId = null;
@@ -806,6 +765,11 @@
         // Temporary on-click tracks (shown when persist-on-click is NOT enabled)
         const tempPersistentLayer = L.layerGroup();
         const TEMP_PERSIST_MS = 20 * 1000; // 20 seconds for temporary click tracks
+        // Long tracks layer (drawn from /api/track for visible hexes)
+        let longTracksLayer = L.layerGroup();
+        let longTracksIntervalId = null;
+        const LONG_TRACKS_POLL_MS = 15000; // fetch long tracks every 15s
+        const LONG_TRACKS_BATCH_SIZE = 8; // chunk size for parallel requests
         // Initialize persisted indicator (safe now that persistentTracks exists)
         if (typeof updatePersistedIndicator === 'function') updatePersistedIndicator();
 
@@ -985,7 +949,7 @@
             batchPollIntervalId = setInterval(runBatchPollOnce, BATCH_POLL_INTERVAL_MS);
         }
 
-        // Start/stop long tracks fetch
+        // Start/stop long tracks fetch (always enabled by default)
         function startLongTracksPolling() {
             if (longTracksIntervalId) return;
             // initial run
@@ -999,7 +963,8 @@
                 clearInterval(longTracksIntervalId);
                 longTracksIntervalId = null;
             }
-            try { longTracksLayer.clearLayers(); if (map.hasLayer(longTracksLayer)) map.removeLayer(longTracksLayer); } catch (e) {}
+            // Keep long tracks layer visible (mandatory) - just clear data
+            try { longTracksLayer.clearLayers(); } catch (e) {}
         }
 
         function startLiveTracksPolling() {
@@ -1060,7 +1025,6 @@
                 });
                 if (visible.length === 0) {
                     // nothing to draw
-                    stopLongTracksPolling();
                     return;
                 }
 
@@ -1489,7 +1453,22 @@
             const track = (trackVal !== '' && trackVal != null) ? trackVal : '';
             const lat = (p.lat || p.latitude || p.Lat) || '';
             const lon = (p.lon || p.longitude || p.Lon) || '';
-            const timeStr = p.timestamp ? (isNaN(Number(p.timestamp)) ? new Date(p.timestamp).toISOString() : new Date(Number(p.timestamp)).toISOString()) : '';
+            // Calculate age in seconds since last update
+            const timeStr = p.timestamp ? (() => {
+                const timestamp = isNaN(Number(p.timestamp)) ? new Date(p.timestamp).getTime() : Number(p.timestamp);
+                const ageSeconds = Math.floor((Date.now() - timestamp) / 1000);
+                return ageSeconds >= 0 ? `${ageSeconds}s ago` : '—';
+            })() : '—';
+            // Aircraft type
+            const aircraftType = p.type || p.aircraft_type || p.t || p.TPE || '';
+
+            // Determine popup background color based on vertical rate
+            let popupBgColor = '#ffffff'; // default white
+            if (verticalRate > 500) {
+                popupBgColor = '#e8f5e8'; // light green for climbing
+            } else if (verticalRate < -300) {
+                popupBgColor = '#ffeaea'; // light red for descending
+            }
 
             // Determine airline logo
             let airlineLogoHtml = '';
@@ -1500,17 +1479,25 @@
                 }
             }
 
+            // Create FlightAware link
+            const hex = (p.hex || '').toUpperCase();
+            const flightAwareUrl = callsign 
+                ? `https://flightaware.com/live/flight/${encodeURIComponent(callsign)}`
+                : `https://flightaware.com/live/modes/${encodeURIComponent(hex.toLowerCase())}/ident`;
+            const displayText = `${hex}${callsign ? ' — ' + callsign : ''}`;
+
             return `
-                <div style="min-width:200px">
-                    <strong>${(p.hex||'').toUpperCase()}${callsign ? ' — ' + callsign : ''}</strong>
+                <div style="min-width:200px; background-color:${popupBgColor}; border-radius:6px; padding:8px;">
+                    <strong><a href="${flightAwareUrl}" onclick="window.open('${flightAwareUrl}', '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes'); return false;" style="color:inherit;text-decoration:none;cursor:pointer;">${displayText}</a></strong>
                     <div>Registration: <em>${reg || '—'}</em></div>
+                    <div>Type: <em>${aircraftType || '—'}</em></div>
                     <div>Airline: <em>${airline || '—'}</em>${airlineLogoHtml}</div>
                     <div>Squawk: <em>${squawk || '—'}</em></div>
                     <div>Alt: <em>${alt || '—'}</em></div>
                     <div>Speed: <em>${speed || '—'}</em></div>
                     <div>Track: <em>${track !== '' ? track + '°' : '—'}</em></div>
                     <div>Pos: <em>${lat ? (typeof lat === 'number' ? lat.toFixed(5) : lat) : '—'}, ${lon ? (typeof lon === 'number' ? lon.toFixed(5) : lon) : '—'}</em></div>
-                    <div>Seen: <em>${timeStr || '—'}</em></div>
+                    <div>Age: <em>${timeStr}</em></div>
                 </div>`;
         }
 
@@ -1816,14 +1803,12 @@
             // Enforce minimum size of 50x50 pixels
             const finalSize = Math.max(size, 50);
 
-            // Determine color based on vertical rate (feet per minute)
-            let color = '#ff3300'; // default red
+            // Determine color filter based on vertical rate (feet per minute)
+            let colorFilter = 'none'; // default no filter
             if (verticalRate > 500) {
-                color = '#00ff00'; // green for climbing
+                colorFilter = 'sepia(1) hue-rotate(90deg) saturate(2)'; // green for climbing
             } else if (verticalRate < -300) {
-                color = '#ff0000'; // red for descending
-            } else {
-                color = '#9900ff'; // purple for level flight
+                colorFilter = 'sepia(1) hue-rotate(-50deg) saturate(2)'; // red for descending
             }
 
             // Determine image source - use only aircraft type icons
@@ -1838,16 +1823,58 @@
                     src = `/icons/aircraft.svg`;
                 }
             } catch (e) {}
-            // Fallback to simple aircraft SVG from piaware/dump1090-fa style
-            const imgHtml = src ? `<img src="${src}" alt="aircraft" style="width:${finalSize}px;height:${finalSize}px;object-fit:contain;display:block;border-radius:3px;border:1px solid rgba(255,255,255,0.3);filter: drop-shadow(0 0 3px ${color});"/>` : `<svg xmlns="http://www.w3.org/2000/svg" width="${finalSize}" height="${finalSize}" viewBox="0 0 36 36">
+            // Create image element with color filter applied
+            const imgHtml = src ? `<img src="${src}" alt="aircraft" style="width:${finalSize}px;height:${finalSize}px;object-fit:contain;display:block;border-radius:3px;border:1px solid rgba(255,255,255,0.3);filter: ${colorFilter};"/>` : `<svg xmlns="http://www.w3.org/2000/svg" width="${finalSize}" height="${finalSize}" viewBox="0 0 36 36">
                 <defs>
-                    <style>.cls-1{fill:${color};}.cls-2{fill:#ffffff;}</style>
+                    <linearGradient id="aircraftFillGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#ff3300;stop-opacity:1" />
+                        <stop offset="50%" style="stop-color:#ff3300;stop-opacity:0.9" />
+                        <stop offset="100%" style="stop-color:#ff3300;stop-opacity:0.7" />
+                    </linearGradient>
+                    <linearGradient id="wingGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" style="stop-color:#f0f0f0;stop-opacity:1" />
+                        <stop offset="100%" style="stop-color:#cccccc;stop-opacity:1" />
+                    </linearGradient>
                 </defs>
-                <g>
-                    <path class="cls-1" d="M18,4l2,4h8l-6,4,2,6-6-4-6,4,2-6-6-4h8Z"/>
-                    <path class="cls-2" d="M18,5l1.5,3h6l-4.5,3,1.5,4.5-4.5-3-4.5,3,1.5-4.5-4.5-3h6Z" opacity="0.3"/>
-                </g>
+
+                <!-- Main fuselage/body -->
+                <ellipse cx="18" cy="18" rx="4.5" ry="14" fill="url(#aircraftFillGradient)" stroke="#ffffff" stroke-width="0.8"/>
+
+                <!-- Wings (main) -->
+                <rect x="6" y="16.5" width="24" height="3" rx="1" fill="url(#wingGradient)" stroke="#ffffff" stroke-width="0.5"/>
+                <rect x="7" y="17" width="22" height="2" rx="0.5" fill="#ff3300" opacity="0.9"/>
+
+                <!-- Tail section -->
+                <rect x="16" y="4" width="4" height="8" rx="0.5" fill="url(#aircraftFillGradient)" stroke="#ffffff" stroke-width="0.5"/>
+                <rect x="16.5" y="4.5" width="3" height="7" rx="0.3" fill="#ff3300" opacity="0.8"/>
+
+                <!-- Vertical stabilizer -->
+                <rect x="17.2" y="2" width="1.6" height="6" rx="0.2" fill="url(#wingGradient)" stroke="#ffffff" stroke-width="0.3"/>
+                <rect x="17.4" y="2.2" width="1.2" height="5.6" rx="0.1" fill="#ff3300" opacity="0.9"/>
+
+                <!-- Horizontal stabilizers -->
+                <rect x="14" y="5" width="8" height="2" rx="0.3" fill="url(#wingGradient)" stroke="#ffffff" stroke-width="0.3"/>
+                <rect x="14.5" y="5.2" width="7" height="1.6" rx="0.2" fill="#ff3300" opacity="0.8"/>
+
+                <!-- Engines (turbofan style) -->
+                <circle cx="9" cy="18" r="2" fill="#333333" stroke="#ffffff" stroke-width="0.3"/>
+                <circle cx="9" cy="18" r="1.2" fill="#666666"/>
+                <circle cx="27" cy="18" r="2" fill="#333333" stroke="#ffffff" stroke-width="0.3"/>
+                <circle cx="27" cy="18" r="1.2" fill="#666666"/>
+
+                <!-- Cockpit windows -->
+                <rect x="16" y="7" width="4" height="3" rx="2" fill="#87ceeb" opacity="0.8" stroke="#ffffff" stroke-width="0.2"/>
+                <rect x="16.5" y="7.5" width="3" height="2" rx="1.5" fill="#4682b4" opacity="0.6"/>
+
+                <!-- Wing flaps/ailerons (subtle) -->
+                <rect x="8" y="19.5" width="4" height="1" rx="0.2" fill="#666666" opacity="0.7"/>
+                <rect x="24" y="19.5" width="4" height="1" rx="0.2" fill="#666666" opacity="0.7"/>
+
+                <!-- Landing gear doors (subtle) -->
+                <rect x="12" y="30" width="2" height="1.5" rx="0.3" fill="#666666" opacity="0.5"/>
+                <rect x="22" y="30" width="2" height="1.5" rx="0.3" fill="#666666" opacity="0.5"/>
             </svg>`;
+
             const html = `<div style="transform: rotate(${rotation}deg); width: ${finalSize}px; height:${finalSize}px; display:flex; align-items:center; justify-content:center">${imgHtml}</div>`;
             return L.divIcon({ html, className: 'aircraft-logo-icon', iconSize: [finalSize, finalSize], iconAnchor: [finalSize/2, finalSize/2] });
         }
@@ -2091,7 +2118,7 @@
                                 try {
                                     const newTrack = (typeof merged.track === 'number' && !isNaN(merged.track)) ? merged.track : (merged.track ? Number(merged.track) : null);
                                     if (prevTrack !== null && newTrack !== null && Math.abs(newTrack - prevTrack) > 5) {
-                                        try { showTransientMarker(existing.getLatLng(), 'blue', 3000, 5); } catch (e) {}
+                                        try { showTransientMarker(existing.getLatLng(), 'blue', 15000, 5); } catch (e) {}
                                     }
                                 } catch (e) {}
 
@@ -2214,11 +2241,24 @@
                         if (aircraftInfo.manufacturer || aircraftInfo.typecode) {
                             icon = createAircraftLogoIcon(aircraftInfo, rot || 0, 50, verticalRate);
                         } else {
-                            icon = createAircraftIcon('#ff3300', 50, rot || 0);
+                            // Determine color based on vertical rate for fallback icon
+                            let fallbackColor = '#ff3300'; // default orange
+                            if (verticalRate > 500) {
+                                fallbackColor = '#00ff00'; // green for climbing
+                            } else if (verticalRate < -300) {
+                                fallbackColor = '#ff0000'; // red for descending
+                            }
+                            icon = createAircraftIcon(fallbackColor, 50, rot || 0);
                         }
                     } catch (e) {
                         // Fallback to SVG icon if logo creation fails
-                        icon = createAircraftIcon('#ff3300', 50, rot || 0);
+                        let fallbackColor = '#ff3300'; // default orange
+                        if (verticalRate > 500) {
+                            fallbackColor = '#00ff00'; // green for climbing
+                        } else if (verticalRate < -300) {
+                            fallbackColor = '#ff0000'; // red for descending
+                        }
+                        icon = createAircraftIcon(fallbackColor, 50, rot || 0);
                     }
                     const marker = L.marker([lat, lon], { icon, pane: 'livePane', zIndexOffset: 1000 });
 
@@ -2271,6 +2311,7 @@
                                     try { updateDebugPanel(hex); } catch (e) {}
                                     // Clear any previous hover-only track
                                     trackLayer.clearLayers();
+                                    longTracksLayer.clearLayers();
 
                                     // Use the UI-selected track window (minutes)
                                     const minutesElem = document.getElementById('track-window-input');
@@ -2348,141 +2389,46 @@
                             hoverTrackHex = null;
                             try { updateDebugPanel(null); } catch (e) {}
                             trackLayer.clearLayers();
+                            longTracksLayer.clearLayers();
                             if (map.hasLayer(trackLayer)) map.removeLayer(trackLayer);
                             // Stop per-aircraft flight polling when hover ends
                             try { stopFlightPolling(hex); } catch (e) {}
                         }, HOVER_CLEAR_MS);
                     });
 
-                    // Click to persist (if checkbox enabled) — toggle persisted track for this hex
+                    // Click to show temporary track (persist-on-click functionality removed)
                     marker.on('click', async () => {
                         try {
                             if (!hex) return;
-                            const persistEnabled = document.getElementById('persist-on-click') ? document.getElementById('persist-on-click').checked : false;
-                            // New behavior: if persist-on-click is OFF, show a temporary track for a short TTL.
-                            if (!persistEnabled) {
-                                setTrackStatus('Fetching (temp)...', 'loading');
-                                const minutesElem = document.getElementById('track-window-input');
-                                const minutes = minutesElem ? parseInt(minutesElem.value, 10) || 1 : 1;
-                                try {
-                                    const { points } = await fetchTrackWithCache(hex, minutes);
-                                    if (points.length > 0) {
-                                        // draw on tempPersistentLayer (distinct style)
-                                        const latlngs = densifyTrackPoints(points, 0.1);
-                                        const poly = L.polyline(latlngs, { color: '#ffaa00', weight: 3, opacity: 0.9, dashArray: '6,4', pane: 'persistentPane', interactive: false });
-                                        const start = L.circleMarker(latlngs[0], { radius: 3, fillColor: '#00ff00', color: '#006600', weight: 1, fillOpacity: 0.9, pane: 'persistentPane' });
-                                        const end = L.circleMarker(latlngs[latlngs.length - 1], { radius: 3, fillColor: '#ff0000', color: '#660000', weight: 1, fillOpacity: 0.9, pane: 'persistentPane' });
-                                        const lg = L.layerGroup([poly, start, end]);
-                                        tempPersistentLayer.addLayer(lg);
-                                        if (!map.hasLayer(tempPersistentLayer)) tempPersistentLayer.addTo(map);
-                                        setTrackStatus(formatOkWithTime(`Temp (${points.length})`), 'ok');
-                                        // auto-remove after TTL
-                                        setTimeout(() => {
-                                            try { tempPersistentLayer.removeLayer(lg); } catch (e) {}
-                                        }, TEMP_PERSIST_MS);
-                                    } else {
-                                        setTrackStatus('No data', 'error');
-                                    }
-                                } catch (err) {
-                                    console.warn('Failed to fetch/show temp track for', hex, err);
-                                    setTrackStatus('Error', 'error');
-                                }
-                                return;
-                            }
-
-                            // If persistEnabled is ON, proceed with toggle persisted behavior
-                            // If already persisted, remove it
-                            if (persistentTracks.has(hex)) {
-                                const lg = persistentTracks.get(hex);
-                                persistentTracksLayer.removeLayer(lg);
-                                persistentTracks.delete(hex);
-                                updatePersistedIndicator();
-                                setTrackStatus(`Removed persisted ${hex}`, 'ok');
-                                return;
-                            }
-
-                            setTrackStatus('Fetching...', 'loading');
+                            setTrackStatus('Fetching (temp)...', 'loading');
                             const minutesElem = document.getElementById('track-window-input');
                             const minutes = minutesElem ? parseInt(minutesElem.value, 10) || 1 : 1;
                             try {
                                 const { points } = await fetchTrackWithCache(hex, minutes);
                                 if (points.length > 0) {
-                                    const lg = L.layerGroup();
-
-                                    // Create colored segments based on vertical rate
-                                    const segments = [];
-                                    let currentSegment = {
-                                        points: [points[0]],
-                                        color: getVerticalRateColor(points[0].vertical_rate || 0)
-                                    };
-
-                                    for (let i = 1; i < points.length; i++) {
-                                        const point = points[i];
-                                        const color = getVerticalRateColor(point.vertical_rate || 0);
-
-                                        if (color === currentSegment.color) {
-                                            // Continue current segment
-                                            currentSegment.points.push(point);
-                                        } else {
-                                            // Start new segment
-                                            segments.push(currentSegment);
-                                            currentSegment = {
-                                                points: [point],
-                                                color: color
-                                            };
-                                        }
-                                    }
-                                    segments.push(currentSegment); // Add final segment
-
-                                    // Draw each segment
-                                    segments.forEach(segment => {
-                                        if (segment.points.length >= 2) {
-                                            const latlngs = densifyTrackPoints(segment.points, 0.1);
-                                            const poly = L.polyline(latlngs, {
-                                                color: segment.color,
-                                                weight: 4,
-                                                opacity: 0.95,
-                                                pane: 'persistentPane',
-                                                interactive: false
-                                            });
-                                            lg.addLayer(poly);
-                                        }
-                                    });
-
-                                    // Add start/end markers
-                                    const start = L.circleMarker([points[0].lat, points[0].lon], {
-                                        radius: 4,
-                                        fillColor: '#00ff00',
-                                        color: '#006600',
-                                        weight: 1,
-                                        fillOpacity: 0.95,
-                                        pane: 'persistentPane'
-                                    });
-                                    const end = L.circleMarker([points[points.length - 1].lat, points[points.length - 1].lon], {
-                                        radius: 4,
-                                        fillColor: '#ff0000',
-                                        color: '#660000',
-                                        weight: 1,
-                                        fillOpacity: 0.95,
-                                        pane: 'persistentPane'
-                                    });
-                                    lg.addLayer(start);
-                                    lg.addLayer(end);
-
-                                    persistentTracks.set(hex, lg);
-                                    persistentTracksLayer.addLayer(lg);
-                                    updatePersistedIndicator();
-                                    try { updateDebugPanel(hex); } catch (e) {}
-                                    setTrackStatus(formatOkWithTime(`Persisted (${points.length})`), 'ok');
+                                    // draw on tempPersistentLayer (distinct style)
+                                    const latlngs = densifyTrackPoints(points, 0.1);
+                                    const poly = L.polyline(latlngs, { color: '#ffaa00', weight: 3, opacity: 0.9, dashArray: '6,4', pane: 'persistentPane', interactive: false });
+                                    const start = L.circleMarker(latlngs[0], { radius: 3, fillColor: '#00ff00', color: '#006600', weight: 1, fillOpacity: 0.9, pane: 'persistentPane' });
+                                    const end = L.circleMarker(latlngs[latlngs.length - 1], { radius: 3, fillColor: '#ff0000', color: '#660000', weight: 1, fillOpacity: 0.9, pane: 'persistentPane' });
+                                    const lg = L.layerGroup([poly, start, end]);
+                                    tempPersistentLayer.addLayer(lg);
+                                    if (!map.hasLayer(tempPersistentLayer)) tempPersistentLayer.addTo(map);
+                                    setTrackStatus(formatOkWithTime(`Temp (${points.length})`), 'ok');
+                                    // auto-remove after TTL
+                                    setTimeout(() => {
+                                        try { tempPersistentLayer.removeLayer(lg); } catch (e) {}
+                                    }, TEMP_PERSIST_MS);
                                 } else {
                                     setTrackStatus('No data', 'error');
                                 }
                             } catch (err) {
-                                console.warn('Failed to fetch/persist track for', hex, err);
+                                console.warn('Failed to fetch/show temp track for', hex, err);
                                 setTrackStatus('Error', 'error');
                             }
                         } catch (err) {
-                            console.warn('Click handler error for', hex, err);
+                            console.warn('Failed to fetch/show temp track for', hex, err);
+                            setTrackStatus('Error', 'error');
                         }
                     });
 
@@ -2516,11 +2462,6 @@
                 // Ensure live layer is on the map
                 if (!map.hasLayer(liveLayer)) liveLayer.addTo(map);
                 setLiveStatus(formatOkWithTime(`OK (${positions.length})`), 'ok');
-                // If long tracks toggle is enabled, ensure polling is active
-                try {
-                    const cb = document.getElementById('show-long-tracks');
-                    if (cb && cb.checked) startLongTracksPolling();
-                } catch (e) {}
             } catch (err) {
                 console.warn('Failed to fetch live positions:', err);
                 setLiveStatus('Error', 'error');
@@ -2567,17 +2508,21 @@
                 try { startBatchPollingVisibleFlights(); } catch (e) { console.warn('Failed to start batch polling', e); }
                 // Start live tracks polling to draw short recent tracks for active flights
                 try { startLiveTracksPolling(); } catch (e) { console.warn('Failed to start live tracks polling', e); }
+                // Start long tracks polling to draw historical tracks for visible aircraft
+                try { startLongTracksPolling(); } catch (e) { console.warn('Failed to start long tracks polling', e); }
             } else {
                 if (liveIntervalId) { clearInterval(liveIntervalId); liveIntervalId = null; }
                 clearLiveLayer();
                 // Clear any hovered track overlay
                 hoverTrackHex = null;
                 trackLayer.clearLayers();
+                longTracksLayer.clearLayers();
                 if (map.hasLayer(trackLayer)) map.removeLayer(trackLayer);
                 // Stop batch polling when live is disabled
                 try { stopBatchPollingVisibleFlights(); } catch (e) {}
                 // Stop live tracks polling and clear live tracks
                 try { stopLiveTracksPolling(); } catch (e) {}
+                // Long tracks remain active (mandatory)
             }
         }
 

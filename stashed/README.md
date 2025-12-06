@@ -23,7 +23,7 @@ All PowerShell scripts have been moved here as they have been replaced with Pyth
 
 ## Other Files
 
-- `aircraft_tracker.py` - Previous version of the aircraft tracker
+- `aircraft-tracker.py` - Previous version of the aircraft tracker
 - `geotiff-cache-status.test.js` - GeoTIFF cache testing utility
 - `geotiff-server.js` - GeoTIFF server implementation
 

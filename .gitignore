@@ -37,3 +37,10 @@ __pycache__/
 *.record
 piaware.reception.*
 aircraft-tracker-outputs/
+# Cache directories
+tile_cache/
+html-archive/
+runtime/
+tile_cache_backup_*/
+# Environment variables
+.env
