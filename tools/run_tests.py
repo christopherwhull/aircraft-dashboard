@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Aircraft Dashboard - Comprehensive Test Suite (Python runner)
+AirSquawk - Comprehensive Test Suite (Python runner)
 Adds direct PiAware origin checking in addition to Node API checks.
 """
 import argparse
@@ -115,7 +115,7 @@ def reception_range_validator(data: dict) -> Dict[str, Any]:
 
 def run_tests(runs: int = 2, delay: float = 1.0) -> int:
     print('\n' + '='*50)
-    print('Aircraft Dashboard - Test Suite Runner')
+    print('AirSquawk - Test Suite Runner')
     print('='*50)
     print(f'Running {runs} test iterations\n')
 

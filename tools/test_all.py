@@ -257,7 +257,7 @@ def performance_test(tracker: TestTracker):
 
 def run_all_tests(runs: int = 1, delay: float = 1.0):
     print('\n' + '='*50)
-    print('AIRCRAFT DASHBOARD - COMPREHENSIVE TEST SUITE')
+    print('AIRSQUAWK - COMPREHENSIVE TEST SUITE')
     print('='*50)
     print(f"Running {runs} test iteration(s)\n")
 
@@ -372,7 +372,7 @@ def run_all_tests(runs: int = 1, delay: float = 1.0):
 
 
 if __name__ == '__main__':
-    p = argparse.ArgumentParser(description='Run all test suites for Aircraft Dashboard')
+    p = argparse.ArgumentParser(description='Run all test suites for AirSquawk')
     p.add_argument('-r', '--runs', type=int, default=1)
     p.add_argument('-d', '--delay', type=float, default=1.0)
     p.add_argument('--base-url', type=str, default=None)

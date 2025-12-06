@@ -184,7 +184,7 @@ function generateMetadata(logoFiles, outputPath) {
  */
 async function main() {
     try {
-        console.log('🎨 Aircraft Dashboard Logo Media Pack Generator');
+        console.log('🎨 AirSquawk Logo Media Pack Generator');
         console.log('===============================================\n');
 
         // Create temporary directory for downloads

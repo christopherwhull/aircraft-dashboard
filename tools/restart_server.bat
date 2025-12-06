@@ -1,9 +1,9 @@
 @echo off
-REM Aircraft Dashboard Server Restart Script
-REM This script restarts the Node.js server for the aircraft dashboard
+REM AirSquawk Server Restart Script
+REM This script restarts the Node.js server for the AirSquawk dashboard
 
 echo ==================================================
-echo Aircraft Dashboard - Server Restart Script
+echo AirSquawk - Server Restart Script
 echo ==================================================
 
 REM Change to the script directory

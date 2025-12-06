@@ -1,6 +1,6 @@
 # Tools Directory
 
-This directory contains all the utility scripts and tools for the Aircraft Dashboard project.
+This directory contains all the utility scripts and tools for the AirSquawk project.
 
 ## Categories
 
@@ -53,7 +53,7 @@ This directory contains all the utility scripts and tools for the Aircraft Dashb
 - `test_aircraft_lookup.js` - Test aircraft lookup
 - `test_squawk_api.js` - Test squawk API
 - `test_workflow.py` - Complete testing workflow
-- `run-tests.ps1` - Run tests (deprecated; use `run_tests.py`)
+- `run-tests.ps1` - Run tests (deprecated; moved to stashed/powershell-scripts; use `run_tests.py`)
 - `run_tests.py` - Run tests (Python)
 - `validate_kml.py` - Validate KML data
 - `verify_backend_data.js` - Verify backend data integrity

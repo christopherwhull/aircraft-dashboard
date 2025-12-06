@@ -1,6 +1,6 @@
-# Aircraft Dashboard Wiki
+# AirSquawk Wiki
 
-Turn PiAware ADS‑B data into real-time flight intelligence and analytics. Aircraft Dashboard is an open-source platform for live tracking, playback, and analytics — ideal for hobbyists, operators, and organizations that need on-premise situational awareness and secure data retention.
+Turn PiAware ADS‑B data into real-time flight intelligence and analytics. AirSquawk is an open-source platform for live tracking, playback, and analytics — ideal for hobbyists, operators, and organizations that need on-premise situational awareness and secure data retention.
 
 Who it's for:
 - Hobbyists and Enthusiasts: Visualize local aircraft and track flights in real time.

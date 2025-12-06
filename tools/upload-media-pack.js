@@ -221,7 +221,7 @@ async function uploadMediaPack(fileInfo) {
 }
 
 async function main() {
-    console.log('Aircraft Dashboard Media Pack S3 Uploader');
+    console.log('AirSquawk Media Pack S3 Uploader');
     console.log('==========================================');
     console.log(`Target bucket: ${BUCKET_NAME}`);
     console.log('Handles: logos/ directory and aircraft_types.json');
