@@ -13,6 +13,7 @@ async function run() {
     fs.mkdirSync(outdir, { recursive: true });
 
     const consoleMessages = [];
+    const consoleErrors = [];
     const pageErrors = [];
     const network = [];
 
@@ -26,6 +27,13 @@ async function run() {
             const entry = { type: msg.type(), text, location: msg.location() };
             consoleMessages.push(entry);
             console[msg.type()]('[PAGE]', text);
+            // treat 'error' console messages as failures
+            if (msg.type() === 'error') {
+                consoleErrors.push(entry);
+            } else if (typeof text === 'string' && /Uncaught|ReferenceError|TypeError|SyntaxError|Error\b/.test(text)) {
+                // Also capture strings that look like JS errors
+                consoleErrors.push(entry);
+            }
         } catch (e) {}
     });
 
@@ -60,8 +68,8 @@ async function run() {
         console.error('Initial page.goto failed:', err.message);
     }
 
-    // Wait some time to allow polling and rendering (tunable)
-    await page.waitForTimeout(8000);
+    // Waiting some time to allow polling and rendering (tunable)
+    await new Promise(r => setTimeout(r, 8000));
 
     // Evaluate DOM to find leaflet panes and counts of SVG paths/circles inside panes
     const paneSummary = await page.evaluate(() => {
@@ -106,6 +114,18 @@ async function run() {
     console.log('Artifacts written to', outdir);
     console.log('Pane summary:', paneSummary);
     console.log('Layer counts:', layerCounts);
+
+    // If any page errors or console errors were found, fail the process with a non-zero exit code
+    if (pageErrors.length > 0 || consoleErrors.length > 0) {
+        const errSummary = {
+            pageErrors: pageErrors.length,
+            consoleErrors: consoleErrors.length
+        };
+        fs.writeFileSync(path.join(outdir, 'leaflet-errors-summary.json'), JSON.stringify({ pageErrors, consoleErrors }, null, 2));
+        console.error('Errors detected during page capture:', JSON.stringify(errSummary));
+        await browser.close();
+        process.exit(2);
+    }
 
     await browser.close();
 }
