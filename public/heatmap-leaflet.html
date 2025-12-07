@@ -267,8 +267,8 @@
 
             <div class="control-group">
                 <label for="opacity">Opacity:</label>
-                <input type="range" id="opacity" min="0.1" max="1.0" step="0.1" value="0.7" style="width: 100px;">
-                <span id="opacity-value">0.7</span>
+                <input type="range" id="opacity" min="0.1" max="1.0" step="0.1" value="0.1" style="width: 100px;">
+                <span id="opacity-value">0.1</span>
             </div>
 
             <div class="control-group">
@@ -382,6 +382,7 @@
     <script>
         // Initialize map centered on Great Lakes region where FAA sectional charts are available
         const map = L.map('map').setView([42.0, -87.9], 7); // Center on Chicago/Great Lakes
+        window.map = map;
 
         // Create dedicated panes for live markers and persistent tracks so they sit above grid layers
         map.createPane('livePane');
