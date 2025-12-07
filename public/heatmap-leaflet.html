@@ -380,18 +380,53 @@
     </div>
 
     <script>
-        // Initialize map centered on Great Lakes region where FAA sectional charts are available
-        const map = L.map('map').setView([42.0, -87.9], 7); // Center on Chicago/Great Lakes
-        window.map = map;
+        // Initialize map with dynamic centering based on config and receiver location
+        async function initializeMap() {
+            try {
+                // Fetch config and receiver location in parallel
+                const [configResponse, receiverResponse] = await Promise.all([
+                    fetch('/api/config'),
+                    fetch('/api/receiver-location')
+                ]);
 
-        // Create dedicated panes for live markers and persistent tracks so they sit above grid layers
-        map.createPane('livePane');
-        map.getPane('livePane').style.zIndex = 650; // above overlay tiles
-        map.createPane('persistentPane');
-        map.getPane('persistentPane').style.zIndex = 660; // above livePane
-        // Dedicated pane for heatmap/grid so it stays below live markers
-        map.createPane('heatmapPane');
-        map.getPane('heatmapPane').style.zIndex = 400; // below livePane/persistentPane
+                const config = await configResponse.json();
+                const receiver = await receiverResponse.json();
+
+                // Determine map center
+                let centerLat, centerLon, zoomLevel;
+
+                if (config.heatmap && config.heatmap.mapCenter && config.heatmap.mapCenter.enabled) {
+                    // Use config override
+                    centerLat = config.heatmap.mapCenter.lat;
+                    centerLon = config.heatmap.mapCenter.lon;
+                    zoomLevel = config.heatmap.mapCenter.zoom;
+                    console.log('Using config map center:', centerLat, centerLon, zoomLevel);
+                } else if (receiver.available) {
+                    // Use receiver location
+                    centerLat = receiver.lat;
+                    centerLon = receiver.lon;
+                    zoomLevel = 8; // Default zoom when using receiver location
+                    console.log('Using receiver location:', centerLat, centerLon, zoomLevel);
+                } else {
+                    // Fallback to default (Great Lakes region)
+                    centerLat = 42.0;
+                    centerLon = -87.9;
+                    zoomLevel = 7;
+                    console.log('Using fallback location (Great Lakes):', centerLat, centerLon, zoomLevel);
+                }
+
+                // Initialize map
+                const map = L.map('map').setView([centerLat, centerLon], zoomLevel);
+                window.map = map;
+
+                // Create dedicated panes for live markers and persistent tracks so they sit above grid layers
+                map.createPane('livePane');
+                map.getPane('livePane').style.zIndex = 650; // above overlay tiles
+                map.createPane('persistentPane');
+                map.getPane('persistentPane').style.zIndex = 660; // above livePane
+                // Dedicated pane for heatmap/grid so it stays below live markers
+                map.createPane('heatmapPane');
+                map.getPane('heatmapPane').style.zIndex = 400; // below livePane/persistentPane
 
         // Add OpenStreetMap base layer
         const osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -535,6 +570,23 @@
         map.on('zoomend', () => {
             // Future zoom-based logic can go here
         });
+
+            } catch (error) {
+                console.error('Failed to initialize map:', error);
+                // Fallback to hardcoded initialization
+                const map = L.map('map').setView([42.0, -87.9], 7);
+                window.map = map;
+                
+                // Add basic OSM layer
+                const osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors',
+                    maxZoom: 18
+                }).addTo(map);
+            }
+        }
+
+        // Initialize the map
+        initializeMap();
 
         let gridLayer = null;
         // we'll register overlays (heatmap grid, live positions, persisted tracks) with the layers control
@@ -2869,8 +2921,43 @@
             }
         }
 
-        function resetMap() {
-            map.setView([39.5, -98.0], 4);
+        async function resetMap() {
+            try {
+                // Fetch config and receiver location
+                const [configResponse, receiverResponse] = await Promise.all([
+                    fetch('/api/config'),
+                    fetch('/api/receiver-location')
+                ]);
+
+                const config = await configResponse.json();
+                const receiver = await receiverResponse.json();
+
+                // Determine map center (same logic as initialization)
+                let centerLat, centerLon, zoomLevel;
+
+                if (config.heatmap && config.heatmap.mapCenter && config.heatmap.mapCenter.enabled) {
+                    // Use config override
+                    centerLat = config.heatmap.mapCenter.lat;
+                    centerLon = config.heatmap.mapCenter.lon;
+                    zoomLevel = config.heatmap.mapCenter.zoom;
+                } else if (receiver.available) {
+                    // Use receiver location
+                    centerLat = receiver.lat;
+                    centerLon = receiver.lon;
+                    zoomLevel = 8;
+                } else {
+                    // Fallback to continental US
+                    centerLat = 39.5;
+                    centerLon = -98.0;
+                    zoomLevel = 4;
+                }
+
+                map.setView([centerLat, centerLon], zoomLevel);
+            } catch (error) {
+                console.error('Failed to reset map:', error);
+                // Fallback
+                map.setView([39.5, -98.0], 4);
+            }
         }
 
         function toggleLegend() {

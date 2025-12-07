@@ -2,7 +2,7 @@ const AWS = require('@aws-sdk/client-s3');
 const s3Client = require('aws-sdk');
 
 // Load config
-const config = require('./config.js');
+const config = require('./config-loader');
 
 async function checkTimestamps() {
     console.log('Checking S3 files for timestamp format...\n');

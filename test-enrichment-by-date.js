@@ -1,6 +1,6 @@
 const fs = require('fs').promises;
 const AWS = require('@aws-sdk/client-s3');
-const config = require('./config.js');
+const config = require('./config-loader');
 
 async function analyzeEnrichmentByDay() {
     console.log('\n╔════════════════════════════════════════════════════════╗');

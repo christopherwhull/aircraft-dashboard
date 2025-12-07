@@ -1,5 +1,5 @@
 const AWS = require('@aws-sdk/client-s3');
-const config = require('./config.js');
+const config = require('./config-loader');
 
 async function listAndAnalyzeFiles() {
     console.log('\n╔════════════════════════════════════════════════════════╗');

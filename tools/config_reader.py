@@ -1,19 +1,20 @@
 """
-Config Reader for Node.js config.js
-Reads configuration values from the main config.js file
+Config Reader for config.json
+Reads configuration values from the main config.json file
 """
-import re
+import json
 import os
+import re
 
 _config = None  # Global config cache
 
 def read_config():
     """
-    Parse config.js and extract configuration values
+    Parse config.json and extract configuration values
     Returns a dictionary with configuration settings
     """
-    config_path = os.path.join(os.path.dirname(__file__), '..', 'config.js')
-    
+    config_path = os.path.join(os.path.dirname(__file__), '..', 'config.json')
+
     config = {
         's3_endpoint': 'http://localhost:9000',
         's3_region': 'us-east-1',
@@ -23,51 +24,43 @@ def read_config():
         'write_bucket': 'aircraft-data-new',
         'piaware_url': 'http://192.168.0.178:8080/data/aircraft.json'
     }
-    
+
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
             content = f.read()
-            
-            # Extract S3 endpoint
-            match = re.search(r"endpoint:\s*process\.env\.S3_ENDPOINT\s*\|\|\s*'([^']+)'", content)
-            if match:
-                config['s3_endpoint'] = match.group(1)
-            
-            # Extract S3 region
-            match = re.search(r"region:\s*process\.env\.S3_REGION\s*\|\|\s*'([^']+)'", content)
-            if match:
-                config['s3_region'] = match.group(1)
-            
-            # Extract S3 access key
-            match = re.search(r"accessKeyId:\s*process\.env\.S3_ACCESS_KEY\s*\|\|\s*'([^']+)'", content)
-            if match:
-                config['s3_access_key'] = match.group(1)
-            
-            # Extract S3 secret key
-            match = re.search(r"secretAccessKey:\s*process\.env\.S3_SECRET_KEY\s*\|\|\s*'([^']+)'", content)
-            if match:
-                config['s3_secret_key'] = match.group(1)
-            
-            # Extract read bucket
-            match = re.search(r"readBucket:\s*process\.env\.READ_BUCKET\s*\|\|\s*'([^']+)'", content)
-            if match:
-                config['read_bucket'] = match.group(1)
-            
-            # Extract write bucket
-            match = re.search(r"writeBucket:\s*process\.env\.WRITE_BUCKET\s*\|\|\s*'([^']+)'", content)
-            if match:
-                config['write_bucket'] = match.group(1)
-            
+            # Remove comments more carefully - only // not inside quotes
+            # This regex matches // followed by anything until end of line, but only if not inside quotes
+            content = re.sub(r'//(?=(?:(?:[^"]*"){2})*[^"]*$).*', '', content)
+            # Remove trailing commas before } or ]
+            content = re.sub(r',(\s*[}\]])', r'\1', content)
+            data = json.loads(content)
+
+            # Extract S3 settings
+            s3 = data.get('s3', {})
+            config['s3_endpoint'] = s3.get('endpoint', config['s3_endpoint'])
+            config['s3_region'] = s3.get('region', config['s3_region'])
+            credentials = s3.get('credentials', {})
+            config['s3_access_key'] = credentials.get('accessKeyId', config['s3_access_key'])
+            config['s3_secret_key'] = credentials.get('secretAccessKey', config['s3_secret_key'])
+
+            # Extract bucket settings
+            buckets = data.get('buckets', {})
+            config['read_bucket'] = buckets.get('readBucket', config['read_bucket'])
+            config['write_bucket'] = buckets.get('writeBucket', config['write_bucket'])
+
+            # Extract server settings
+            server = data.get('server', {})
+            config['server'] = server
+
             # Extract PiAware URL
-            match = re.search(r"piAwareUrl:\s*process\.env\.PIAWARE_URL\s*\|\|\s*'([^']+)'", content)
-            if match:
-                config['piaware_url'] = match.group(1)
-                
+            data_source = data.get('dataSource', {})
+            config['piaware_url'] = data_source.get('piAwareUrl', config['piaware_url'])
+
     except FileNotFoundError:
-        print(f"Warning: config.js not found at {config_path}, using defaults")
+        print(f"Warning: config.json not found at {config_path}, using defaults")
     except Exception as e:
-        print(f"Warning: Error reading config.js: {e}, using defaults")
-    
+        print(f"Warning: Error reading config.json: {e}, using defaults")
+
     # Check for environment variable overrides
     config['s3_endpoint'] = os.environ.get('S3_ENDPOINT', config['s3_endpoint'])
     config['s3_region'] = os.environ.get('S3_REGION', config['s3_region'])
@@ -76,7 +69,7 @@ def read_config():
     config['read_bucket'] = os.environ.get('READ_BUCKET', config['read_bucket'])
     config['write_bucket'] = os.environ.get('WRITE_BUCKET', config['write_bucket'])
     config['piaware_url'] = os.environ.get('PIAWARE_URL', config['piaware_url'])
-    
+
     return config
 
 # Singleton instance
@@ -92,7 +85,7 @@ def get_config():
 if __name__ == '__main__':
     # Test the config reader
     cfg = get_config()
-    print("Configuration loaded from config.js:")
+    print("Configuration loaded from config.json:")
     for key, value in cfg.items():
         if 'secret' in key or 'key' in key:
             print(f"  {key}: {'*' * len(str(value))}")
