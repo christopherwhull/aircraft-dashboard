@@ -550,6 +550,10 @@
         osmLayer.addTo(map);
         // Keep a handle to the layers control so we can add overlays once created
         const layersControl = L.control.layers(baseLayers, overlayLayers).addTo(map);
+
+        // Add our track layers now that `map` is ready
+        if (typeof liveTracksLayer !== 'undefined') liveTracksLayer.addTo(map);
+        if (typeof persistentTracksLayer !== 'undefined') persistentTracksLayer.addTo(map);
         
         // Load ARTCC boundaries from FAA Open Data
         fetch('https://adds-faa.opendata.arcgis.com/datasets/67885972e4e940b2aa6d74024901c561_0.geojson')
@@ -813,7 +817,6 @@
 
         // Persistent tracks shown when user clicks with "Persist track on click" enabled
         const persistentTracksLayer = L.layerGroup();
-        persistentTracksLayer.addTo(map);
         const persistentTracks = new Map(); // hex -> LayerGroup
         // Temporary on-click tracks (shown when persist-on-click is NOT enabled)
         const tempPersistentLayer = L.layerGroup();
