@@ -1,14 +1,32 @@
-// Simple headless capture script using Puppeteer
+// Simple interactive capture script using Puppeteer
 // Usage: node tools/headless-capture.js <url> [screenshot-path]
+// Press Enter to capture each step
 
 const fs = require('fs');
 const puppeteer = require('puppeteer');
+const readline = require('readline');
+
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+});
+
+function waitForEnter(message) {
+    return new Promise((resolve) => {
+        rl.question(message, () => {
+            resolve();
+        });
+    });
+}
 
 (async () => {
     const url = process.argv[2] || 'http://localhost:3002/heatmap-leaflet.html';
     const screenshot = process.argv[3] || 'tools/leaflet-screenshot.png';
     console.log('Opening', url);
-    const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+    const browser = await puppeteer.launch({ 
+        headless: false,  // Make browser visible for watching
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1200,800'] 
+    });
     const page = await browser.newPage();
     const consoleLogs = [];
     const networkRequests = [];
@@ -37,18 +55,89 @@ const puppeteer = require('puppeteer');
     try {
         await page.goto(url, { waitUntil: 'networkidle2' });
         // Wait a bit to allow live polling to run
-        await new Promise(r => setTimeout(r, 5000));
-        await page.screenshot({ path: screenshot, fullPage: true });
-        console.log('Screenshot saved to', screenshot);
+        await new Promise(r => setTimeout(r, 3000)); // Initial load time
+
+        // Set view to LaPorte Indiana
+        console.log('Setting view to LaPorte Indiana');
+        await page.evaluate(() => {
+            if (window.map) {
+                window.map.setView([41.6114, -86.7228], 10);
+            }
+        });
+        await waitForEnter('Press Enter to start capturing FAA layers...');
+
+        // Cycle through FAA layers
+        const faaLayers = ['FAA VFR Terminal', 'FAA VFR Sectional', 'FAA IFR Area Low', 'FAA IFR Enroute High'];
+        for (const layerName of faaLayers) {
+            console.log(`Switching to layer: ${layerName}`);
+            await page.evaluate((name) => {
+                // Assuming layers are in layer control
+                const inputs = document.querySelectorAll('.leaflet-control-layers-selector');
+                for (const input of inputs) {
+                    if (input.nextSibling && input.nextSibling.textContent.includes(name)) {
+                        input.click();
+                        break;
+                    }
+                }
+            }, layerName);
+            await waitForEnter(`Layer "${layerName}" loaded. Press Enter to capture screenshot...`);
+            await page.screenshot({ path: `runtime/screenshots/laporte-${layerName.replace(/\s+/g, '-').toLowerCase()}.png`, fullPage: true });
+            console.log(`Screenshot saved for ${layerName}`);
+        }
+
+        // Zoom out to demonstrate ARTCC Boundaries
+        console.log('Zooming out to show ARTCC boundaries');
+        await page.evaluate(() => {
+            if (window.map) {
+                window.map.setZoom(6);
+            }
+        });
+        await waitForEnter('Zoomed out for ARTCC boundaries. Press Enter to enable ARTCC layer...');
+        // Enable ARTCC layer
+        await page.evaluate(() => {
+            const inputs = document.querySelectorAll('.leaflet-control-layers-selector');
+            for (const input of inputs) {
+                if (input.nextSibling && input.nextSibling.textContent.includes('ARTCC Boundaries')) {
+                    input.click();
+                    break;
+                }
+            }
+        });
+        await waitForEnter('ARTCC boundaries loaded. Press Enter to capture screenshot...');
+        await page.screenshot({ path: 'runtime/screenshots/laporte-artcc-boundaries.png', fullPage: true });
+        console.log('Screenshot saved for ARTCC boundaries');
+
+        // Go to Cherry Point and show weather
+        console.log('Setting view to Cherry Point (MCAS Cherry Point)');
+        await page.evaluate(() => {
+            if (window.map) {
+                window.map.setView([34.9, -76.9], 8);
+            }
+        });
+        await waitForEnter('Moved to Cherry Point. Press Enter to enable weather radar...');
+        // Enable weather layer
+        await page.evaluate(() => {
+            const inputs = document.querySelectorAll('.leaflet-control-layers-selector');
+            for (const input of inputs) {
+                if (input.nextSibling && input.nextSibling.textContent.includes('Weather Radar Internet')) {
+                    input.click();
+                    break;
+                }
+            }
+        });
+        await waitForEnter('Weather radar loaded. Press Enter to capture final screenshot...');
+        await page.screenshot({ path: 'runtime/screenshots/laporte-cherry-point-weather.png', fullPage: true });
+        console.log('Screenshot saved for Cherry Point weather');
+
     } catch (err) {
         console.error('Error loading page:', err);
     }
 
     // Save logs to files
     try {
-        const logDir = __dirname || 'tools';
-        const consolePath = require('path').join(logDir, 'leaflet-console.log');
-        const networkPath = require('path').join(logDir, 'leaflet-network.log');
+        const logDir = 'runtime/screenshots';
+        const consolePath = require('path').join(logDir, 'laporte-leaflet-console.log');
+        const networkPath = require('path').join(logDir, 'laporte-leaflet-network.log');
         fs.writeFileSync(consolePath, JSON.stringify(consoleLogs, null, 2));
         fs.writeFileSync(networkPath, JSON.stringify(networkRequests, null, 2));
         console.log('Saved logs to', consolePath, 'and', networkPath);
@@ -57,4 +146,5 @@ const puppeteer = require('puppeteer');
     }
 
     await browser.close();
+    rl.close();
 })();
