@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const fetch = require('node-fetch');
 
-const config = require('../config');
+const config = require('../config-loader');
 
 // Configurable via env or CLI-style env
 const TILE_SERVER_URL = process.env.TILE_SERVER_URL || process.env.TILE_PROXY_URL || process.env.TARGET_TILE_SERVER || 'http://localhost:3002/api/tiles';
@@ -29,7 +29,7 @@ async function getReceiverCoords() {
     // Try PIAWARE_URL from config or env
     let piawareUrl = (config && config.dataSource && config.dataSource.piAwareUrl) || process.env.PIAWARE_URL;
     if (!piawareUrl) {
-        console.warn('PiAware URL not configured in config.js or PIAWARE_URL env. Please set PIAWARE_URL.');
+        console.warn('PiAware URL not configured in config.json or PIAWARE_URL env. Please set PIAWARE_URL.');
         return null;
     }
 

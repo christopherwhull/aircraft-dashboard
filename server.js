@@ -7,7 +7,7 @@ const axios = require('axios');
 const morgan = require('morgan');
 const { S3Client, PutObjectCommand, HeadBucketCommand, CreateBucketCommand } = require('@aws-sdk/client-s3');
 
-const config = require('./config');
+const config = require('./config-loader');
 const { getAirlineDatabase, getAircraftTypesDatabase } = require('./lib/databases');
 const { registration_from_hexid } = require('./lib/registration');
 const { setupApiRoutes } = require('./lib/api-routes');
@@ -28,7 +28,7 @@ const io = socketIo(server);
 // call the endpoint (or run `npm run restart:node`/`npm run restart:auto`) to apply changes.
 
 // --- Load Configuration ---
-const PORT = config.server.port;
+const PORT = config.server.mainPort;
 const PIAWARE_URL = config.dataSource.piAwareUrl;
 const BUCKET_NAME = config.buckets.readBucket;
 const WRITE_BUCKET_NAME = config.buckets.writeBucket;

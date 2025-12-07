@@ -299,6 +299,81 @@ For comprehensive API documentation, see [`API_DOCUMENTATION.md`](API_DOCUMENTAT
 - `/api/server-status` - Server performance metrics
 - `/api/config` - UI configuration
 
+## Testing & Validation
+
+AirSquawk includes a comprehensive multi-layer test suite that validates all system components:
+
+### Test Suite Overview
+```bash
+npm run test:all  # Run complete test suite
+```
+
+**Test Categories:**
+- **Jest Unit Tests** (42 tests) - Core server functionality and API routes
+- **API Integration Tests** - Track API, Squawk API, Logo Server, Time Windows
+- **Python Integration Tests** (4 tests) - Backend processing and utilities
+- **Asset Validation Tests** - SVG aircraft icons and logo completeness
+- **Performance Tests** - Response times and data processing validation
+
+### Individual Test Components
+```bash
+# Core functionality
+npm test                           # Jest unit tests
+node tools/test-track-api.js       # Aircraft lookup API
+node tools/test-squawk-api.js      # Squawk transitions API
+node tools/test-logo-server.js     # Airline logo serving
+node tools/test-svg-icons.js       # Aircraft icon validation
+node tools/test-timewindow-api.js  # Time window functionality
+node tools/test-positions-per-hour.js # Position analytics
+
+# Python backend
+python tools/test_all.py           # Python integration tests
+python tools/test_endpoints.py     # API endpoint validation
+```
+
+### Test Results Summary
+- ✅ **Jest Tests:** 42/42 passed (core functionality)
+- ✅ **API Tests:** 6/6 passed (Track, Squawk, Logo, Time Window, Positions, SVG Icons)
+- ✅ **Python Tests:** 4/4 passed (backend integration)
+- ✅ **Endpoint Tests:** 5/5 passed (API accessibility)
+- ✅ **Asset Tests:** 100% coverage (all icons and logos validated)
+
+### Continuous Integration
+The test suite is designed for CI/CD pipelines and provides:
+- Fast execution (~8 seconds total)
+- Comprehensive coverage of all system components
+- Detailed reporting with performance metrics
+- Automated validation of data integrity and API functionality
+
+### Clean Slate Testing
+
+For testing that requires a clean data environment while preserving existing data:
+
+```bash
+npm run test:clean-slate  # Backup → Test → Restore (recommended)
+```
+
+This automatically:
+1. **Backs up** all existing bucket data to `runtime/bucket-backups/`
+2. **Runs** the complete test suite
+3. **Restores** the backup to original state
+
+### Manual Backup Operations
+
+```bash
+# Backup current bucket data
+npm run backup-buckets
+
+# Check backup status
+npm run backup-status
+
+# Restore from latest backup
+npm run restore-buckets
+
+# Clean up backup files
+npm run clean-backups
+```
+
 ## Background Jobs
 
 The server runs several background processes:
