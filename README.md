@@ -1,5 +1,7 @@
 # AirSquawk — Real-time Flight Intelligence for PiAware
 
+[![Website](https://img.shields.io/badge/site-airsquawk-blue?logo=github)](https://christopherwhull.github.io/airsquawk/)
+
 Turn raw ADS‑B feeds from a PiAware receiver into actionable, real-time flight intelligence. AirSquawk provides live tracking, fleet and airline analytics, historical playback, and reception analysis—on-premise or in the cloud—making it ideal for hobbyists, operators, small airports, and engineers who need reliable, low-latency situational awareness and flexible analytics.
 
 Why it matters:
