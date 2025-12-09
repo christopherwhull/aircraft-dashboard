@@ -12,7 +12,6 @@ http://localhost:3002/api/
 ## Authentication
 Most endpoints do not require authentication. The `/api/restart` endpoint supports optional token-based authentication.
 
----
 
 ## Core Data Endpoints
 
@@ -20,7 +19,6 @@ Most endpoints do not require authentication. The `/api/restart` endpoint suppor
 Returns live aircraft positions within a specified time window.
 
 **Parameters:**
-- `hours` (number, optional): Hours to look back (default: 24)
 
 **Response:**
 ```json
@@ -43,6 +41,47 @@ Returns live aircraft positions within a specified time window.
   ]
 }
 ```
+
+---
+
+## Auto-generated Endpoint Index (synchronization note)
+
+The following endpoint index was generated automatically from the running server's route definitions (`lib/api-routes.js`). It is intended as an authoritative appendix to help keep documentation accurate. If you add or remove routes, please update this file or regenerate the index.
+
+Implemented endpoints (summary):
+
+- GET `/api/heatmap-data` — 1nm grid heatmap data (params: `hours`)
+- GET `/api/position-timeseries-live` — timeseries buckets for recent positions (params: `minutes` or `startTime`/`endTime`)
+- GET `/api/reception-range` — reception analysis by bearing/altitude (params: `hours`)
+- GET `/api/flights` — flights listing (params: `limit`, `hours`, `airline`)
+- GET `/api/airline-stats` — airline statistics (params: `hours`)
+- GET `/api/squawk-transitions` — squawk transitions (params: `hours`, `startTime`, `endTime`)
+- GET `/api/historical-stats` — historical aggregated stats (params: varies)
+- POST `/api/restart` — trigger server restart (auth via `Authorization` header or `X-Restart-Token`)
+- GET `/api/piaware-status` — piaware receiver status
+- GET `/api/health` — system health and uptime
+- GET `/api/server-status` — memory/cpu/request metrics
+- GET `/api/receiver-location` — configured receiver coordinates
+- GET `/api/cache-status` — cache sizes & S3 connectivity
+- GET `/api/airline-database` — full airline database payload (careful: large)
+- GET `/api/config` — UI configuration used by the frontend
+- GET `/api/aircraft/:icao24` — aircraft details (param: `icao24`)
+- GET `/api/aircraft-database/status` — status of aircraft DB loads
+- POST `/api/aircraft/batch` — batched aircraft enrichment (body: `{ "hexes": [...] }`)
+- POST `/api/flights/batch` — batched flights (body: `{ "hexes": [...] }`)
+- GET `/api/v1logos/:airlineCode` — legacy logo endpoint
+- GET `/api/v2logos/:airlineCode` — logo serving endpoint (PNG/SVG)
+- GET `/api/aircraft-types` — return aircraft types mapping
+- GET `/api/airlines` — airline list / database
+- GET `/api/heatmap` — heatmap page/data endpoint
+- GET `/api/heatmap-cache-clear` — clear heatmap cache
+- GET `/api/heatmap-stats` — stats about heatmap cache and load times
+- GET `/api/positions` — live positions (params: `hours`)
+- GET `/api/squawk` — compact squawk listing endpoint
+- GET `/api/flight` — single flight info (param: `icao`)
+- GET `/api/track` — historical track points for an aircraft (params: `hex`, `minutes`)
+
+If you would like, I can expand each of the above with parameter and response examples (automatically inferred), or open a PR with this appendix only. This file will be committed to `chore/docs-sync-all` branch.
 
 ---
 
@@ -481,6 +520,153 @@ Most endpoints support reasonable request rates. High-frequency polling should i
 ---
 
 ## Heatmap Visualization Features
+
+## Additional Endpoint Details
+
+### GET `/api/heatmap-data`
+Returns aircraft position density aggregated into a 1 nautical mile grid optimized for heatmap generation.
+
+**Parameters:**
+- `hours` (number, optional): Hours to look back (default: 24)
+- `bbox` (string, optional): Bounding box `minLon,minLat,maxLon,maxLat` to restrict data
+
+**Response:**
+```json
+{
+  "grid": [
+    { "lat_min": 40.0, "lat_max": 40.0167, "lon_min": -74.0, "lon_max": -73.9833, "count": 15 }
+  ],
+  "resolution_nm": 1
+}
+```
+
+---
+
+### GET `/api/piaware-status`
+Returns the status of the connected PiAware/dump1090 receiver (if configured).
+
+**Response:**
+```json
+{
+  "connected": true,
+  "lastSeen": 1700000000000,
+  "messagesPerMinute": 1200,
+  "software": "piaware 7.2"
+}
+```
+
+---
+
+### GET `/api/receiver-location`
+Returns the configured receiver (station) location used for range/reception calculations.
+
+**Response:**
+```json
+{
+  "lat": 40.7128,
+  "lon": -74.0060,
+  "elevation_m": 10,
+  "name": "Home Receiver"
+}
+```
+
+---
+
+### GET `/api/airline-database`
+Returns the full airline database. This endpoint can return a large payload; clients should request it sparingly or use local caching.
+
+**Response:**
+```json
+{
+  "AAL": { "name": "American Airlines", "icao": "AAL", "iata": "AA", "country": "US" },
+  "DAL": { "name": "Delta Air Lines", "icao": "DAL", "iata": "DL", "country": "US" }
+}
+```
+
+---
+
+### GET `/api/aircraft-database/status`
+Shows current aircraft DB load status and source (S3 vs local).
+
+**Response:**
+```json
+{
+  "status": "loaded",
+  "source": "s3",
+  "lastLoaded": 1700000000000,
+  "recordCount": 236000
+}
+```
+
+---
+
+### GET `/api/v1logos/:airlineCode`
+Legacy logo endpoint kept for compatibility. Returns the same image as `/api/v2logos` but with older caching semantics.
+
+**Parameters:**
+- `airlineCode` (string, required): Airline IATA or ICAO code
+
+**Response:** Binary image (PNG/SVG)
+
+---
+
+### GET `/api/aircraft-types`
+Returns the mapping of type codes to human-friendly names and display categories used by the UI.
+
+**Response:**
+```json
+{
+  "B738": { "manufacturer": "Boeing", "model": "737-800", "category": "Narrowbody" },
+  "A320": { "manufacturer": "Airbus", "model": "A320", "category": "Narrowbody" }
+}
+```
+
+---
+
+### GET `/api/heatmap`
+Serves the heatmap page or data depending on `Accept` headers. For programmatic access prefer `/api/heatmap-data`.
+
+**Response:** HTML page (when requested by browser) or JSON (data) matching `/api/heatmap-data` structure.
+
+---
+
+### GET `/api/heatmap-cache-clear`
+Clears the server-side heatmap cache. Intended for operators to force regeneration.
+
+**Response:**
+```json
+{ "status": "cleared", "cacheEntriesRemoved": 42 }
+```
+
+---
+
+### GET `/api/heatmap-stats`
+Returns statistics about heatmap generation performance and cache hit/miss counts.
+
+**Response:**
+```json
+{
+  "cacheHits": 1200,
+  "cacheMisses": 45,
+  "avgGenerateMs": 320
+}
+```
+
+---
+
+### GET `/api/squawk`
+Compact listing of currently observed squawk codes with counts.
+
+**Response:**
+```json
+{
+  "1234": 12,
+  "7000": 5,
+  "1200": 2
+}
+```
+
+---
 
 The heatmap interface provides advanced visual indicators for aircraft status and movement:
 
