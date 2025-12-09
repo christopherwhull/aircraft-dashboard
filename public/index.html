@@ -10,6 +10,7 @@
     <header style="text-align: center; margin-bottom: 20px;">
         <img src="/media/airsquak.jpg" alt="AirSquawk Logo" style="max-width: 300px; height: auto;">
         <h1>AirSquawk</h1>
+        <div id="airline-db-indicator" style="color:#e0e0e0;margin-top:6px;font-size:12px;">Airline DB: <em>loading…</em></div>
     </header>
     <button id="restart-btn" class="restart-button" onclick="restartServer()">🔄 Restart Server</button>
     <div id="connection-status" class="status-disconnected">● Disconnected</div>
@@ -23,6 +24,40 @@
         <button class="tab-button" onclick="showTab('heatmap', event)">Heatmap</button>
         <button class="tab-button" onclick="showTab('reception', event)">Reception</button>
         <button class="tab-button" onclick="showTab('cache', event)">Cache Status</button>
+    </div>
+    <div id="global-time-controls" style="margin:12px 0;">
+        <div id="positions-buttons" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+            <button class="positions-window-btn" data-hours="1" onclick="handleGlobalTimeSelection(1)" title="Show last 1 hour" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">1h</button>
+            <button class="positions-window-btn" data-hours="4" onclick="handleGlobalTimeSelection(4)" title="Show last 4 hours" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">4h</button>
+            <button class="positions-window-btn" data-hours="6" onclick="handleGlobalTimeSelection(6)" title="Show last 6 hours" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">6h</button>
+            <button class="positions-window-btn" data-hours="8" onclick="handleGlobalTimeSelection(8)" title="Show last 8 hours" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">8h</button>
+            <button class="positions-window-btn" data-hours="12" onclick="handleGlobalTimeSelection(12)" title="Show last 12 hours" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">12h</button>
+            <button class="positions-window-btn" data-hours="24" onclick="handleGlobalTimeSelection(24)" title="Show last 24 hours" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">24h</button>
+            <button class="positions-window-btn" data-hours="168" onclick="handleGlobalTimeSelection(168)" title="Show last 1 week" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">1w</button>
+            <button class="positions-window-btn" data-hours="672" onclick="handleGlobalTimeSelection(672)" title="Show last 4 weeks" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">4w</button>
+            <button class="positions-window-btn" data-hours="all" onclick="handleGlobalTimeSelection(null)" title="Show all time" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">All</button>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;">
+            <label for="time-window" style="color:#e0e0e0;font-weight:600;">Time Window:</label>
+            <select id="time-window" aria-label="Time Window" title="Select a time window for charts and positions" style="background:#141414;color:#e0e0e0;border:1px solid #333;border-radius:4px;padding:6px;">
+                <option value="1h">1 Hour</option>
+                <option value="4h">4 Hours</option>
+                <option value="6h">6 Hours</option>
+                <option value="8h">8 Hours</option>
+                <option value="12h">12 Hours</option>
+                <option value="24h" selected>24 Hours</option>
+                <option value="1w">1 Week</option>
+                <option value="4w">4 Weeks</option>
+                <option value="all">All time</option>
+            </select>
+        </div>
+        <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+            <label for="positions-start-time" style="font-weight: bold; color: #e0e0e0;">Start:</label>
+            <input type="datetime-local" id="positions-start-time" style="padding: 5px; margin-right: 15px; background: #2a2a2a; color: #e0e0e0; border: 1px solid #555; border-radius: 4px;">
+            <label for="positions-end-time" style="font-weight: bold; color: #e0e0e0;">End:</label>
+            <input type="datetime-local" id="positions-end-time" style="padding: 5px; margin-right: 15px; background: #2a2a2a; color: #e0e0e0; border: 1px solid #555; border-radius: 4px;">
+            <button onclick="handleGlobalTimeSelection(null)" title="Refresh" style="padding: 6px 12px; background: #42a5f5; color: #fff; border: none; border-radius: 4px; cursor: pointer;">🔄 Refresh</button>
+        </div>
     </div>
     <!--
     TAB INVENTORY:
@@ -57,17 +92,8 @@
         <h2>Reception Range</h2>
         <div id="reception-receiver-info" style="margin-bottom:15px;padding:10px;background:#1e1e1e;border-radius:4px;border:1px solid #333;color:#e0e0e0;"><strong style="color:#fff;">Receiver Position:</strong> <span id="receiver-coords" style="color:#42a5f5;">Loading...</span></div>
         <div style="margin-bottom: 20px; padding: 15px; background: #1e1e1e; border-radius: 8px; border: 1px solid #333;">
-            <div style="margin-bottom: 10px;">
-                <button onclick="loadReceptionRange(1)" style="padding: 5px 10px; margin-right: 5px; background: #2a2a2a; color: #42a5f5; border: 1px solid #42a5f5; border-radius: 4px; cursor: pointer;">1 Hour</button>
-                <button onclick="loadReceptionRange(6)" style="padding: 5px 10px; margin-right: 5px; background: #2a2a2a; color: #42a5f5; border: 1px solid #42a5f5; border-radius: 4px; cursor: pointer;">6 Hours</button>
-                <button onclick="loadReceptionRange(24)" style="padding: 5px 10px; margin-right: 5px; background: #2a2a2a; color: #42a5f5; border: 1px solid #42a5f5; border-radius: 4px; cursor: pointer;">24 Hours</button>
-                <button onclick="loadReceptionRange(168)" style="padding: 5px 10px; margin-right: 5px; background: #2a2a2a; color: #42a5f5; border: 1px solid #42a5f5; border-radius: 4px; cursor: pointer;">7 Days</button>
-                <button onclick="loadReceptionRange(744)" style="padding: 5px 10px; margin-right: 5px; background: #2a2a2a; color: #42a5f5; border: 1px solid #42a5f5; border-radius: 4px; cursor: pointer;">31 Days</button>
-            </div>
-            <label for="reception-start-time" style="font-weight: bold; color: #e0e0e0;">Start Time:</label>
-            <input type="datetime-local" id="reception-start-time" style="padding: 5px; margin-right: 15px; background: #2a2a2a; color: #e0e0e0; border: 1px solid #555; border-radius: 4px;">
-            <label for="reception-end-time" style="font-weight: bold; color: #e0e0e0;">End Time:</label>
-            <input type="datetime-local" id="reception-end-time" style="padding: 5px; margin-right: 15px; background: #2a2a2a; color: #e0e0e0; border: 1px solid #555; border-radius: 4px;">
+            <!-- Per-tab quick buttons removed: global time control is used instead -->
+            <!-- Start/End now in global header -->
             <button onclick="loadReceptionRange()" style="padding: 6px 15px; background: #42a5f5; color: #fff; border: none; border-radius: 4px; cursor: pointer;">🔄 Refresh</button>
         </div>
         <div id="reception-summary" style="margin-top:10px;margin-bottom:10px;color:#e0e0e0;"></div>
@@ -85,7 +111,8 @@
             <h3 style="color:#e0e0e0;">3D Reception Range (Bearing × Altitude × Range)</h3>
             <div id="reception-3d-plot" style="width:100%;height:500px;border:1px solid #555;background:#1e1e1e;"></div>
         </div>
-        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+        <!-- Use an explicit, pinned Plotly version to avoid deprecation warnings when using plotly-latest -->
+        <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
     </div>
 
     <div id="live-tab" class="tab-content active">
@@ -130,15 +157,8 @@
     <div id="airlines-tab" class="tab-content">
         <h2>Airline Statistics</h2>
         <div style="margin-bottom: 20px; padding: 15px; background: #1e1e1e; border-radius: 8px; border: 1px solid #333;">
-            <div style="margin-bottom: 10px;">
-                <button onclick="loadAirlineStats(1)" style="padding: 5px 10px; margin-right: 5px; background: #2a2a2a; color: #42a5f5; border: 1px solid #42a5f5; border-radius: 4px; cursor: pointer;">1 Hour</button>
-                <button onclick="loadAirlineStats(6)" style="padding: 5px 10px; margin-right: 5px; background: #2a2a2a; color: #42a5f5; border: 1px solid #42a5f5; border-radius: 4px; cursor: pointer;">6 Hours</button>
-                <button onclick="loadAirlineStats(24)" style="padding: 5px 10px; margin-right: 5px; background: #2a2a2a; color: #42a5f5; border: 1px solid #42a5f5; border-radius: 4px; cursor: pointer;">24 Hours</button>
-            </div>
-            <label for="airline-start-time" style="font-weight: bold; color: #e0e0e0;">Start Time:</label>
-            <input type="datetime-local" id="airline-start-time" style="padding: 5px; margin-right: 15px; background: #2a2a2a; color: #e0e0e0; border: 1px solid #555; border-radius: 4px;">
-            <label for="airline-end-time" style="font-weight: bold; color: #e0e0e0;">End Time:</label>
-            <input type="datetime-local" id="airline-end-time" style="padding: 5px; margin-right: 15px; background: #2a2a2a; color: #e0e0e0; border: 1px solid #555; border-radius: 4px;">
+            <!-- Per-tab quick buttons removed: global time control is used instead -->
+            <!-- Start/End now in global header -->
             <button onclick="loadAirlineStats()" style="padding: 6px 15px; background: #42a5f5; color: #fff; border: none; border-radius: 4px; cursor: pointer;">🔄 Refresh</button>
         </div>
         <div id="airline-stats-summary-last-hour"></div>
@@ -189,18 +209,11 @@
         <h2>Position Statistics</h2>
         
         <div style="margin-bottom: 20px; padding: 15px; background: #1e1e1e; border-radius: 8px; border: 1px solid #333;">
-            <div style="margin-bottom: 10px;">
-                <button onclick="loadUnifiedPositionStats(1)" style="padding: 5px 10px; margin-right: 5px; background: #2a2a2a; color: #42a5f5; border: 1px solid #42a5f5; border-radius: 4px; cursor: pointer;">1 Hour</button>
-                <button onclick="loadUnifiedPositionStats(6)" style="padding: 5px 10px; margin-right: 5px; background: #2a2a2a; color: #42a5f5; border: 1px solid #42a5f5; border-radius: 4px; cursor: pointer;">6 Hours</button>
-                <button onclick="loadUnifiedPositionStats(24)" style="padding: 5px 10px; margin-right: 5px; background: #2a2a2a; color: #42a5f5; border: 1px solid #42a5f5; border-radius: 4px; cursor: pointer;">24 Hours</button>
-                <button onclick="loadUnifiedPositionStats(168)" style="padding: 5px 10px; margin-right: 5px; background: #2a2a2a; color: #42a5f5; border: 1px solid #42a5f5; border-radius: 4px; cursor: pointer;">7 Days</button>
-            </div>
-            <label for="positions-start-time" style="font-weight: bold; color: #e0e0e0;">Start Time:</label>
-            <input type="datetime-local" id="positions-start-time" style="padding: 5px; margin-right: 15px; background: #2a2a2a; color: #e0e0e0; border: 1px solid #555; border-radius: 4px;">
-            <label for="positions-end-time" style="font-weight: bold; color: #e0e0e0;">End Time:</label>
-            <input type="datetime-local" id="positions-end-time" style="padding: 5px; margin-right: 15px; background: #2a2a2a; color: #e0e0e0; border: 1px solid #555; border-radius: 4px;">
+            <!-- Per-tab quick buttons removed: use the global time control in the header -->
+            <!-- Start/End now in global header -->
             <button onclick="loadUnifiedPositionStats()" style="padding: 6px 15px; background: #42a5f5; color: #fff; border: none; border-radius: 4px; cursor: pointer;">🔄 Refresh</button>
         </div>
+        <div style="margin-bottom: 20px; color:#bdbdbd">Using timescale: <span id="positions-timescale-indicator">24h</span></div>
         
         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px;">
             <!-- Memory Stats Card -->
@@ -250,17 +263,10 @@
     <div id="flights-tab" class="tab-content">
         <h2>Flights</h2>
         <div style="margin-bottom: 20px; padding: 15px; background: #1e1e1e; border-radius: 8px; border: 1px solid #333;">
-            <div style="margin-bottom: 10px;">
-                <button onclick="loadFlights(1)" style="padding: 5px 10px; margin-right: 5px; background: #2a2a2a; color: #42a5f5; border: 1px solid #42a5f5; border-radius: 4px; cursor: pointer;">1 Hour</button>
-                <button onclick="loadFlights(6)" style="padding: 5px 10px; margin-right: 5px; background: #2a2a2a; color: #42a5f5; border: 1px solid #42a5f5; border-radius: 4px; cursor: pointer;">6 Hours</button>
-                <button onclick="loadFlights(24)" style="padding: 5px 10px; margin-right: 5px; background: #2a2a2a; color: #42a5f5; border: 1px solid #42a5f5; border-radius: 4px; cursor: pointer;">24 Hours</button>
-            </div>
-            <label for="flights-start-time" style="font-weight: bold; color: #e0e0e0;">Start Time:</label>
-            <input type="datetime-local" id="flights-start-time" style="padding: 5px; margin-right: 15px; background: #2a2a2a; color: #e0e0e0; border: 1px solid #555; border-radius: 4px;">
-            <label for="flights-end-time" style="font-weight: bold; color: #e0e0e0;">End Time:</label>
-            <input type="datetime-local" id="flights-end-time" style="padding: 5px; margin-right: 15px; background: #2a2a2a; color: #e0e0e0; border: 1px solid #555; border-radius: 4px;">
+            <!-- Per-tab quick buttons removed: use the global time control in the header -->
+            <!-- Start/End now in global header -->
             <label style="font-weight: bold; color: #e0e0e0;">Gap minutes: <input id="flights-gap" type="number" value="5" min="1" style="width:60px; background: #2a2a2a; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; padding: 5px;"></label>
-            <button onclick="loadFlights()" style="padding: 6px 15px; background: #42a5f5; color: #fff; border: none; border-radius: 4px; cursor: pointer;">🔄 Refresh</button>
+            <!-- Refresh handled automatically on custom range exit or quick button press -->
         </div>
         <div id="flights-summary" style="margin-top:15px;padding:12px;background:#f44336;border-radius:4px;border-left:4px solid #c62828;font-weight:bold;font-size:16px;color:#fff;"></div>
         <table id="flights-table" class="sortable">
@@ -296,15 +302,8 @@
     <div id="squawk-tab" class="tab-content">
         <h2>Squawk Code Transition Analysis</h2>
         <div style="margin-bottom: 20px; padding: 15px; background: #1e1e1e; border-radius: 8px; border: 1px solid #333;">
-            <div style="margin-bottom: 10px;">
-                <button onclick="loadSquawkTransitions(1)" style="padding: 5px 10px; margin-right: 5px; background: #2a2a2a; color: #42a5f5; border: 1px solid #42a5f5; border-radius: 4px; cursor: pointer;">1 Hour</button>
-                <button onclick="loadSquawkTransitions(6)" style="padding: 5px 10px; margin-right: 5px; background: #2a2a2a; color: #42a5f5; border: 1px solid #42a5f5; border-radius: 4px; cursor: pointer;">6 Hours</button>
-                <button onclick="loadSquawkTransitions(24)" style="padding: 5px 10px; margin-right: 5px; background: #2a2a2a; color: #42a5f5; border: 1px solid #42a5f5; border-radius: 4px; cursor: pointer;">24 Hours</button>
-            </div>
-            <label for="squawk-start-time" style="font-weight: bold; color: #e0e0e0;">Start Time:</label>
-            <input type="datetime-local" id="squawk-start-time" style="padding: 5px; margin-right: 15px; background: #2a2a2a; color: #e0e0e0; border: 1px solid #555; border-radius: 4px;">
-            <label for="squawk-end-time" style="font-weight: bold; color: #e0e0e0;">End Time:</label>
-            <input type="datetime-local" id="squawk-end-time" style="padding: 5px; margin-right: 15px; background: #2a2a2a; color: #e0e0e0; border: 1px solid #555; border-radius: 4px;">
+            <!-- Per-tab quick buttons removed: use the global time control in the header -->
+            <!-- Start/End now in global header -->
             <button onclick="loadSquawkTransitions()" style="padding: 6px 15px; background: #42a5f5; color: #fff; border: none; border-radius: 4px; cursor: pointer;">🔄 Refresh</button>
         </div>
         <div id="squawk-summary"></div>
@@ -336,6 +335,7 @@
             <h3 style="color: #4caf50; margin-top: 0;">📊 Heatmap Cache Statistics</h3>
             <button onclick="loadCacheStatus()" style="padding: 8px 16px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 15px;">🔄 Refresh Cache Status</button>
             <button onclick="clearHeatmapCache()" style="padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">🗑️ Clear Heatmap Cache</button>
+            <button onclick="clearAirlineDBCache()" style="padding: 8px 16px; background: #ff9800; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">🗑️ Clear Airline DB Cache</button>
             
             <div id="cache-status" style="color: #e0e0e0; font-family: monospace; background: #2a2a2a; padding: 15px; border-radius: 4px; margin-top: 10px;">
                 <div>Loading cache status...</div>

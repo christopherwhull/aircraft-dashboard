@@ -1,5 +1,6 @@
 async function loadHeatmap(hoursBack = null) {
     try {
+        try { if (typeof window.showSpinnerForTab === 'function') window.showSpinnerForTab('heatmap', 'Loading heatmap…'); } catch (e) {}
         const airline = document.getElementById('heatmap-airline').value;
         const type = document.getElementById('heatmap-type').value;
         const manufacturer = document.getElementById('heatmap-manufacturer').value;
@@ -12,19 +13,29 @@ async function loadHeatmap(hoursBack = null) {
         }
         
         let timeWindow = '7d'; // default
+        let startTime = null;
+        let endTime = Date.now();
+        let isCustomRange = false;
         
         // If hoursBack is provided, convert to window parameter
         if (hoursBack !== null) {
-            if (hoursBack === 1) timeWindow = '1h';
+            if (hoursBack === 1) { timeWindow = '1h'; startTime = endTime - (1 * 60 * 60 * 1000); }
             else if (hoursBack === 6) timeWindow = '6h';
             else if (hoursBack === 24) timeWindow = '24h';
             else if (hoursBack === 168) timeWindow = '7d';
             else if (hoursBack === 744) timeWindow = 'all';
         } else {
             // Get window from dropdown if available
-            const windowSelect = document.getElementById('heatmap-window');
+            // Prefer the global time-window control when present (keeps heatmap in sync with header)
+            const windowSelect = document.getElementById('time-window') || document.getElementById('heatmap-window');
             if (windowSelect) {
                 timeWindow = windowSelect.value || '7d';
+                // Map select into startTime/endTime
+                if (timeWindow === '1h') startTime = endTime - (1 * 60 * 60 * 1000);
+                else if (timeWindow === '6h') startTime = endTime - (6 * 60 * 60 * 1000);
+                else if (timeWindow === '24h') startTime = endTime - (24 * 60 * 60 * 1000);
+                else if (timeWindow === '7d') startTime = endTime - (168 * 60 * 60 * 1000);
+                else if (timeWindow === 'all') startTime = null;
             }
         }
         
@@ -73,7 +84,7 @@ async function loadHeatmap(hoursBack = null) {
             else if (hoursBack === 744) timeWindow = 'all';
         } else {
             // Get window from dropdown if available
-            const windowSelect = document.getElementById('heatmap-window');
+            const windowSelect = document.getElementById('time-window') || document.getElementById('heatmap-window');
             if (windowSelect) {
                 timeWindow = windowSelect.value || '7d';
             }
@@ -108,6 +119,8 @@ async function loadHeatmap(hoursBack = null) {
 
         // Update the heatmap display
         updateHeatmapDisplay(gridData);
+        try { if (typeof window.setComputedRangeUI === 'function') window.setComputedRangeUI('heatmap', startTime, endTime, isCustomRange); } catch (e) {}
+        try { if (typeof window.hideSpinnerForTab === 'function') window.hideSpinnerForTab('heatmap'); } catch (e) {}
         
     } catch (error) {
         console.error('Error loading heatmap:', error);
@@ -123,6 +136,7 @@ async function loadHeatmap(hoursBack = null) {
                 statusElem.textContent = `Error: ${error.message}`;
                 statusElem.style.color = '#f44336';
             }
+            try { if (typeof window.hideSpinnerForTab === 'function') window.hideSpinnerForTab('heatmap', `<span style=\"color:#f44336;\">Error loading heatmap</span>`); } catch (e) {}
         }
     }
 }
@@ -189,7 +203,7 @@ function updateHeatmapDisplay(gridData) {
         }
     } else {
         console.error('renderHeatmap function not found');
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = '#f44336';
         ctx.font = '14px sans-serif';
@@ -349,7 +363,7 @@ function showTab(tabName) {
 // Set up heatmap-specific event listeners
 function setupHeatmapEventListeners() {
     const generateBtn = document.getElementById('generate-heatmap-btn');
-    const windowSelect = document.getElementById('heatmap-window');
+            const windowSelect = document.getElementById('time-window') || document.getElementById('heatmap-window');
     
     if (generateBtn) {
         generateBtn.addEventListener('click', function() {
@@ -360,9 +374,12 @@ function setupHeatmapEventListeners() {
             switch (windowValue) {
                 case '1h': hoursBack = 1; break;
                 case '4h': hoursBack = 4; break;
+                case '6h': hoursBack = 6; break;
+                case '8h': hoursBack = 8; break;
                 case '12h': hoursBack = 12; break;
                 case '24h': hoursBack = 24; break;
-                case '7d': hoursBack = 168; break; // 7 * 24
+                case '1w': hoursBack = 168; break; // 7 * 24
+                case '4w': hoursBack = 672; break; // 4 * 7 * 24
                 case 'all': hoursBack = null; break; // Will use default in loadHeatmap
             }
             
@@ -573,3 +590,30 @@ function initializeScaleControls() {
     // Initialize display values
     updateSliderDisplays();
 }
+
+// Sync with global positionsTimescale via storage event so other tabs/windows can control the heatmap
+try {
+    window.addEventListener('storage', (e) => {
+        if (e.key === 'positionsTimescale') {
+            const val = e.newValue;
+            if (!val) return;
+            // Map select values to hours
+            function selectValToHours(v) {
+                switch (v) {
+                    case '1h': return 1;
+                    case '4h': return 4;
+                    case '6h': return 6;
+                    case '8h': return 8;
+                    case '12h': return 12;
+                    case '24h': return 24;
+                    case '1w': return 168;
+                    case '4w': return 672;
+                    case 'all': return null;
+                    default: return 24;
+                }
+            }
+            const hours = selectValToHours(val);
+            try { loadHeatmap(hours); } catch (e) { /* ignore */ }
+        }
+    });
+} catch (e) { /* ignore */ }
