@@ -1,0 +1,159 @@
+{
+  server: {
+    port: 3002,
+    logFile: 'runtime/server.log',
+    accessLogFile: 'runtime/access.log',
+    w3cLogDir: 'runtime/logs',
+  },
+  dataSource: {
+    piAwareUrl: 'http://192.168.0.161:8080/data/aircraft.json',
+    receiverTimeout: 5000,
+  },
+  arcgis: {
+    apiKey: 'REPLACE_ME',
+  },
+  s3: {
+    endpoint: 'http://localhost:9000',
+    region: 'us-east-1',
+    credentials: {
+      accessKeyId: 'REPLACE_ME',
+      secretAccessKey: 'REPLACE_ME',
+    },
+    forcePathStyle: true,
+  },
+  buckets: {
+    readBucket: 'aircraft-data',
+    writeBucket: 'aircraft-data-new',
+    s3Prefix: 'aircraft-data/',
+  },
+  state: {
+    stateFile: 'runtime/dashboard-state.json',
+    lastDailyFlightBuildFile: 'runtime/.last-daily-flight-build',
+  },
+  retention: {
+    positionRetentionMs: 86400000,
+    gapMs: 300000,
+    minFlightDurationMs: 30000,
+    squawkRetentionDays: 7,
+    aircraftTrackingTimeoutMs: 60000,
+  },
+  aggregation: {
+    gridSizeForHeatmap: 0.01,
+    sectorDegrees: 10,
+    altitudeZoneSizeFeet: 5000,
+  },
+  backgroundJobs: {
+    fetchDataInterval: 1000,
+    saveStateInterval: 30000,
+    saveAircraftDataInterval: 60000,
+    buildFlightsInterval: 120000,
+    buildHourlyPositionsInterval: 300000,
+    aggregateAirlinesInterval: 300000,
+    aggregateSquawkInterval: 300000,
+    aggregateHistoricalInterval: 1800000,
+    remakeHourlyRollupInterval: 3600000,
+  },
+  initialJobDelays: {
+    buildFlightsDelay: 5000,
+    buildHourlyPositionsDelay: 10000,
+    remakeHourlyRollupDelay: 15000,
+  },
+  positionCache: {
+    lookbackDays: 7,
+  },
+  api: {
+    heatmap: {
+      defaultHours: 24,
+    },
+    positionTimeseries: {
+      defaultMinutes: 10,
+      defaultResolution: 1,
+    },
+    receptionRange: {
+      defaultHours: 24,
+    },
+    squawkTransitions: {
+      defaultHours: 24,
+    },
+    historicalStats: {
+      defaultHours: 168,
+      defaultResolution: 60,
+    },
+    flights: {
+      defaultWindow: '24h',
+      defaultGap: 5,
+    },
+  },
+  s3ListLimits: {
+    maxKeys: 1000,
+    maxPages: null,
+  },
+  dataProcessing: {
+    flightsLookbackHours: 24,
+    hourlyPositionLookbackDays: 7,
+    exportToCSV: true,
+  },
+  logging: {
+    level: 'info',
+    format: 'w3c',
+    enableW3C: true,
+  },
+  reception: {
+    enableKML: true,
+    enableHeatmap: true,
+  },
+  ui: {
+    defaultTimeRanges: {
+      airlines: 1,
+      flights: 1,
+      squawk: 1,
+      heatmap: 24,
+      reception: 24,
+      positions: 24,
+    },
+    quickTimeButtons: [
+      {
+        label: '1 Hour',
+        hours: 1,
+      },
+      {
+        label: '6 Hours',
+        hours: 6,
+      },
+      {
+        label: '24 Hours',
+        hours: 24,
+      },
+      {
+        label: '7 Days',
+        hours: 168,
+      },
+      {
+        label: '31 Days',
+        hours: 744,
+      },
+    ],
+    graph: {
+      positionTimeBins: 15,
+      showPositionsOnLeftAxis: true,
+      defaultMetrics: {
+        positions: true,
+        aircraft: true,
+        flights: true,
+        airlines: true,
+      },
+    },
+    reception: {
+      bearingSectorSize: 15,
+      altitudeBinSize: 5000,
+      ringIntervals: 25,
+    },
+    heatmap: {
+      gridCellSize: 1,
+    },
+    table: {
+      defaultSortColumn: 'count',
+      defaultSortDirection: 'desc',
+    },
+  },
+}
