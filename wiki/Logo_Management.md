@@ -110,7 +110,7 @@ Logos are stored in S3 with the following organization:
 ### Caching
 
 Logos are cached in memory for performance:
-- **Cache Duration**: 24 hours (Cache-Control: public, max-age=86400)
+- **Cache Duration**: 1 hour (Cache-Control: public, max-age=3600)
 - **Fallback**: PNG primary, SVG fallback
 - **Error Handling**: Graceful fallback to placeholder on missing logos
 
