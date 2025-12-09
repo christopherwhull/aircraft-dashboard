@@ -3,8 +3,7 @@ node_modules/
 *.json
 !package.json
 !package-lock.json
-!config.json
-!config.js
+!config.example.json
 !aircraft_types.json
 !tools/aircraft_types.json
 *.log
