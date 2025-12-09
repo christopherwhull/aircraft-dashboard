@@ -188,6 +188,22 @@ Use `test-heatmap.ps1 -FullRun` or `npm run test:all` and the `tools/test-all.js
 
 This project includes scripts and utilities to help an AI agent or automation safely restart the Node.js server when code is updated. Follow the steps below.
 
+- `tabs-time-summary.json` — optional artifact created by `--tabs` containing measured latency and response metadata for the `reception`, `flights`, and `squawk` tabs
+- `tabs-time-summary-aggregate.json` — if you run the `leaflet-tabs-aggregate.js` script, you'll get aggregated summary stats for min/avg/max/median per tab and overall
+- `--assert-v2logo` — When set, the harness asserts that all `/api/v2logos/*` requests map to codes in the airline database and will fail (exit non-zero) with `assertion-failures.json` if any mismatch is found.
+- `--assert-reuse` — When set, the harness asserts that `reuseRate` (measured across `--reuse-repeats`) is >= `--reuse-threshold` and that `logoChangeRate` is 0. If this check fails, the harness will fail (exit non-zero) and write `leaflet-reuse-report.json` and `assertion-failures.json`.
+ - `--assert-no-304` — When set, the harness asserts that repeated `304 Not Modified` responses for `/api/*` endpoints don't exceed a threshold and will fail if they do, writing `leaflet-304-report.json` and `assertion-failures.json`.
+	 - `--max-304=<n>` sets the maximum allowed 304 responses per API path across the run; defaults to `1`.
+ - `--assert-airline-db-storage` — When set, the harness asserts that the client has written `airlineDB-v1` into localStorage and that it contains a JSON with a `ts` and `data` property. If present, the harness will write `leaflet-airline-db.json` containing the snapshot.
+	 - `--max-airline-db-age-min=<n>` sets the maximum acceptable age (in minutes) for the stored airline DB; if the stored timestamp is older than this value an assertion warning (not failure) will be emitted; defaults to `60`.
+
+	Note: UI improvements include a small airline DB indicator in the page header and a "Clear Airline DB Cache" button in the Cache Status tab which clears the `airlineDB-v1` entry in localStorage and clears the in-memory `window.airlineDB` state.
+
+	Positions timescale
+	-------------------
+	- The positions timeseries graph now follows the top-of-page timescale control (`id=time-window` on the index page or `id=heatmap-window` on the heatmap page). When present, this control is authoritative and overrides per-tab manual start/end inputs.
+	- The positions UI now includes a small label (`#positions-timescale-indicator`) showing the active timescale (e.g., `24h`, `1h`, `7d`, or human friendly `All time`).
+	- A new integration test `__tests__/positions-timescale.test.js` validates that changing the global timescale updates the positions timeseries times window.
 1. Check the running server status and compare with local commit:
 
 ```pwsh
