@@ -54,6 +54,18 @@ Below is a short mapping of environment variables to the `config.json` keys. The
 
 For a complete list of available configuration keys, see `config.json`. The table above contains the most frequently changed items for development and production setups.
 
+If you are starting fresh, copy `config.example.json` to `config.json` and edit values before starting the server:
+
+```bash
+cp config.example.json config.json
+```
+
+Alternatively use the export tool if you still have `config.js` and want a programmatic conversion:
+
+```bash
+node tools/export-config-json.js
+```
+
 ## Python Scripts Configuration
 
 Python scripts use `config_reader.py` to read values from `config.json`:
