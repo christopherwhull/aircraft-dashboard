@@ -143,11 +143,53 @@ cd aircraft-dashboard
 npm install
 ```
 
-3. Configure settings in `config.js` or environment variables:
-   - Set your PiAware URL (default: `http://192.168.0.161:8080/data/aircraft.json`)
-   - Configure S3/MinIO connection details (default: `http://localhost:9000`)
-   - Adjust server port (default: 3002)
-   - See [CONFIGURATION.md](CONFIGURATION.md) for detailed configuration options
+3. Configure settings — recommended
+
+There are two ways to configure the application: by editing `config.js` directly (dev), or by using environment variables (recommended for production and scripts).
+
+The project loads `config.js` and then overrides values using environment variables via `process.env` (if defined). The most common configuration options are listed below — they map to the keys in `config.js`.
+
+Common environment variables and their mapping to `config.js`:
+- `PORT` -> `server.port` (default: 3002)
+- `LOG_FILE` -> `server.logFile` (default: runtime/server.log)
+- `PIAWARE_URL` -> `dataSource.piAwareUrl` (default: http://192.168.0.161:8080/data/aircraft.json)
+- `S3_ENDPOINT` -> `s3.endpoint` (default: http://localhost:9000)
+- `S3_REGION` -> `s3.region` (default: us-east-1)
+- `S3_ACCESS_KEY` -> `s3.credentials.accessKeyId` (default: minioadmin)
+- `S3_SECRET_KEY` -> `s3.credentials.secretAccessKey` (default: minioadmin123)
+- `READ_BUCKET` -> `buckets.readBucket` (default: aircraft-data)
+- `WRITE_BUCKET` -> `buckets.writeBucket` (default: aircraft-data-new)
+- `READ_PREFIX` -> not directly used; use `buckets.s3Prefix` or set prefix on `buckets.s3Prefix` in `config.js`
+
+For a full list of supported environment variables and config keys, see `CONFIGURATION.md`.
+
+Example `.env` file (Linux/Mac/Windows WSL):
+```bash
+PORT=3002
+PIAWARE_URL=http://piaware.local:8080/data/aircraft.json
+S3_ENDPOINT=http://localhost:9000
+S3_REGION=us-east-1
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin123
+READ_BUCKET=aircraft-data
+WRITE_BUCKET=aircraft-data-new
+LOG_LEVEL=info
+```
+
+Windows PowerShell example to set up environment variables for a session:
+```powershell
+$env:PORT=3002
+$env:PIAWARE_URL='http://piaware.local:8080/data/aircraft.json'
+$env:S3_ENDPOINT='http://localhost:9000'
+$env:S3_ACCESS_KEY='minioadmin'
+$env:S3_SECRET_KEY='minioadmin123'
+node server.js
+```
+
+Notes:
+- Environment variables take precedence over `config.js`.
+- For development you may edit `config.js` and then restart the server; changes typically require a restart.
+- Never commit production secrets to the repository (`config.js` or a `.env` file) — use secure brokers or CI environment variable injection for production deployments.
 
 4. Start the server:
 
