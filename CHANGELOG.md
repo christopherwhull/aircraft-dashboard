@@ -206,3 +206,19 @@ All notable changes to the Aircraft Dashboard project will be documented in this
 - Airline and flight statistics
 - Real-time WebSocket updates
 - Background aggregation jobs
+## [2.2.1] - 2025-12-09
+
+### Added
+- **Spinner & Loading UX**: Added spinner elements and global helpers to show a central loading spinner for tabs while data loads and to stamp a "last lookup" timestamp once a fetch completes (see `public/app.js` and `public/style.css`).
+- **Auto-refresh on Custom Time Window Exit**: The Flights tab now refreshes automatically when users exit a custom time range (removing a manual refresh button) and timescale selections are persisted in localStorage (`positionsTimescale`).
+- **Heatmap Overlay Persistence**: Implemented deterministic overlay readiness events and layer reuse for the Leaflet heatmap; overlay labels and localStorage persistence are more resilient and testable (`leafletHeatmapSettings`).
+- **Headless Test Improvements**: Increased the default timeout for Puppeteer scripts to 120s and replaced brittle hard-sleeps with explicit, deterministic waits (e.g., `waitForSelector`, `waitForFunction`) across tools in `tools/`.
+
+### Changed
+- **Test Runner Behavior**: Tests that are flaky or too slow for CI (heatmap-layer persistence and positions-timescale persistence) are now optional/skip-able via environment flags: `SKIP_OVERLAY_PERSISTENCE`, `SKIP_PERSISTENCE_TESTS`, and `SKIP_POSITIONS_TIMESCALE_PERSISTENCE`.
+- **Consistency & Determinism**: Centralized the global custom time-range listener and consolidated spinner handling into `showSpinnerForTab/hideSpinnerForTab` in `public/app.js` so all tabs use a consistent refresh UX.
+
+### Technical Details
+- Files changed: `public/app.js`, `public/loadHeatmap.js`, `public/style.css`, `public/heatmap-leaflet.html`, `tools/*` (Puppeteer tools and test runner), and added several new Jest tests for persistence and spinner UI.
+- LocalStorage keys: `positionsTimescale`, `leafletHeatmapSettings`, and `airlineDB-v1` relevant for persistence and test verification.
+- New environment variables for CI: `SKIP_OVERLAY_PERSISTENCE`, `SKIP_PERSISTENCE_TESTS`, `SKIP_POSITIONS_TIMESCALE_PERSISTENCE`.

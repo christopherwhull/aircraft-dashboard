@@ -21,6 +21,24 @@ npm run test:leaflet:full
 
 # Run harness directly and write artifacts to a custom outdir
 node tools/leaflet-test.js "http://localhost:3002/heatmap-leaflet.html" screenshots/testplan/my-run --select-overlays --collect-popups --run-id=my-run
+### Aggregating tabs latency results
+
+If you used `--tabs`, the harness will produce `tabs-time-summary.json` in the outdir. A small helper script exists to compute min/avg/max/median across those results:
+
+```bash
+# Run the harness; the project now uses an explicit Plotly version to avoid the 'plotly-latest' deprecation warning.
+# If you still wish to ignore plotly console messages, pass the explicit version string as an ignore pattern:
+node tools/leaflet-test.js "http://localhost:3002/" screenshots/testplan/leaflet-test-tabs --tabs --run-id=tabs --ignore-console="plotly-2.35.0.min.js"
+
+# Aggregate the run results (writes tabs-time-summary-aggregate.json to the same directory):
+node tools/leaflet-tabs-aggregate.js screenshots/testplan/leaflet-test-tabs/tabs-time-summary.json
+```
+
+
+# To exercise the tabs and record per-time-range latency (reception/flights/squawk):
+```bash
+node tools/leaflet-test.js "http://localhost:3002/" screenshots/testplan/my-tab-run --tabs --run-id=tab-run
+```
 ```
 
 ## CLI Flags
@@ -30,6 +48,7 @@ node tools/leaflet-test.js "http://localhost:3002/heatmap-leaflet.html" screensh
 - `--check-hex=hex1,hex2`: Explicit hex IDs to check for polylines (strict assertions)
 - `--ignore-console=pattern`: Add regex to ignore console error/warning messages (useful for external tile 404s)
 - `--run-id=identifier`: Friendly run identifier that appears in `run-info.json`
+- `--tabs` or `--tabs-test`: Exercise the index tabs (reception, flights, squawk) and click each quick time-range button, measuring response latency and recording `tabs-time-summary.json` in the output directory
 
 ## Artifacts
 
@@ -44,6 +63,7 @@ Artifacts are written to `screenshots/testplan/<outdir>` by default and include:
 - `assertion-failures.json` — list of fatal assertion messages (harness exits with code 3)
 - `assertion-warnings.json` — list of non-fatal warnings (auto-selection didn't find any tracks)
 - `run-info.json` — run metadata including flags, Node version and the `summary` object
+- `tabs-time-summary.json` — optional artifact created by `--tabs` containing per-tab per-time-button latency measurements and response metadata
 
 ## Interpretation
 
