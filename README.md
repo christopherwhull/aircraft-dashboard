@@ -163,6 +163,23 @@ Common environment variables and their mapping to `config.js`:
 
 For a full list of supported environment variables and config keys, see `CONFIGURATION.md`.
 
+Create a `config.json` file from the example template:
+
+```bash
+cp config.example.json config.json
+# Edit config.json to add S3 credentials and any environment-specific values
+```
+
+If you are migrating an existing `config.js` or prefer to programmatically export one, use the helper scripts in `tools/`:
+
+```bash
+# Export a JSON file from config.js (if you still have it in repo):
+node tools/export-config-json.js
+
+# Generate a masked example from config.json (useful for creating shareable example):
+node tools/generate-config-example.js
+```
+
 Example `.env` file (Linux/Mac/Windows WSL):
 ```bash
 PORT=3002
