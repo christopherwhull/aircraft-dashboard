@@ -32,6 +32,28 @@ All settings can be overridden via environment variables:
 | `READ_BUCKET` | aircraft-data | Historical data bucket |
 | `WRITE_BUCKET` | aircraft-data-new | Current data bucket |
 
+## Environment Variable Mapping (quick reference)
+
+Below is a short mapping of environment variables to the `config.js` keys. These are the most commonly configured values when running the server in a container or CI environment.
+
+| Environment Variable | config.js key | Default |
+|---|---|---|
+| `PORT` | `server.port` | `3002` |
+| `LOG_FILE` | `server.logFile` | `runtime/server.log` |
+| `LOG_LEVEL` | `logging.level` | `info` |
+| `LOG_FORMAT` | `logging.format` | `w3c` |
+| `PIAWARE_URL` | `dataSource.piAwareUrl` | `http://192.168.0.161:8080/data/aircraft.json` |
+| `S3_ENDPOINT` | `s3.endpoint` | `http://localhost:9000` |
+| `S3_REGION` | `s3.region` | `us-east-1` |
+| `S3_ACCESS_KEY` | `s3.credentials.accessKeyId` | `minioadmin` |
+| `S3_SECRET_KEY` | `s3.credentials.secretAccessKey` | `minioadmin123` |
+| `READ_BUCKET` | `buckets.readBucket` | `aircraft-data` |
+| `WRITE_BUCKET` | `buckets.writeBucket` | `aircraft-data-new` |
+| `STATE_FILE` | `state.stateFile` | `runtime/dashboard-state.json` |
+| `LAST_DAILY_FILE` | `state.lastDailyFlightBuildFile` | `runtime/.last-daily-flight-build` |
+
+For a complete list of available configuration keys, see `config.js`. The table above contains the most frequently changed items for development and production setups.
+
 ## Python Scripts Configuration
 
 Python scripts use `config_reader.py` to read values from `config.js`:
@@ -105,6 +127,42 @@ node server.js
 Get-Content .env | ForEach-Object { $_ -split '=' | Set-Item -Path Env:$($_[0]) -Value $_[1] }
 node server.js
 ```
+
+### Additional Examples: `.env` file and PowerShell
+
+Example `.env` file (Linux/macOS and most container setups):
+```bash
+PORT=3002
+PIAWARE_URL=http://piaware.local:8080/data/aircraft.json
+S3_ENDPOINT=http://localhost:9000
+S3_REGION=us-east-1
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin123
+READ_BUCKET=aircraft-data
+WRITE_BUCKET=aircraft-data-new
+LOG_LEVEL=info
+```
+
+Load `.env` in your current shell (Linux/Mac):
+```bash
+export $(cat .env | xargs)
+node server.js
+```
+
+Windows PowerShell (session-locally set env vars):
+```powershell
+$env:PORT=3002
+$env:PIAWARE_URL='http://piaware.local:8080/data/aircraft.json'
+$env:S3_ENDPOINT='http://localhost:9000'
+$env:S3_ACCESS_KEY='minioadmin'
+$env:S3_SECRET_KEY='minioadmin123'
+node server.js
+```
+
+Notes:
+- Environment variables have top priority — they override `config.js` values.
+- Use `.env` only for development; never commit production secrets.
+- In CI or production, inject secrets via your CI or secret management system instead of committing them.
 
 ## Configuration Priority
 
