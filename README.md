@@ -206,6 +206,7 @@ node server.js
 Notes:
 - Environment variables take precedence over `config.json`.
 - For development you may edit `config.json` and then restart the server; changes typically require a restart.
+ - `config.js` is deprecated. `config.json` is now the canonical source of configuration: prefer `config.json` or environment variables.
 - Never commit production secrets to the repository (`config.json` or a `.env` file) — use secure brokers or CI environment variable injection for production deployments.
 
 4. Start the server:
