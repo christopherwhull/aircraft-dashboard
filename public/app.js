@@ -1,8 +1,9 @@
 // --- Reception Tab Loader ---
 async function loadReceptionRange(hoursBack = null) {
     try {
-        const startElem = document.getElementById('reception-start-time');
-        const endElem = document.getElementById('reception-end-time');
+    try { showSpinnerForTab('reception'); } catch (e) {}
+        const startElem = document.getElementById('reception-start-time') || document.getElementById('positions-start-time');
+        const endElem = document.getElementById('reception-end-time') || document.getElementById('positions-end-time');
         
         // Helper function to format timestamp as local datetime string
         const formatLocalDateTime = (timestamp) => {
@@ -16,18 +17,21 @@ async function loadReceptionRange(hoursBack = null) {
         };
         
         let hours = 24; // default
+        let isCustomRange = false;
+        let startTime, endTime;
         
         // If hoursBack is provided, use it (from quick buttons)
         if (hoursBack !== null) {
             const now = new Date();
-            const endTime = now.getTime();
-            const startTime = endTime - (hoursBack * 60 * 60 * 1000);
+            endTime = now.getTime();
+            startTime = endTime - (hoursBack * 60 * 60 * 1000);
             
             // Update input fields
             startElem.value = formatLocalDateTime(startTime);
             endElem.value = formatLocalDateTime(endTime);
             
             hours = hoursBack;
+            try { setActivePositionButton(hours); } catch (e) {}
         }
         // Use custom times if set
         else if (startElem && startElem.value && endElem && endElem.value) {
@@ -39,18 +43,21 @@ async function loadReceptionRange(hoursBack = null) {
                 return new Date(year, month - 1, day, hours, minutes, 0, 0).getTime();
             };
             
-            const startTime = parseLocalDateTime(startElem.value);
-            let endTime = parseLocalDateTime(endElem.value);
+            startTime = parseLocalDateTime(startElem.value);
+            let _endTime = parseLocalDateTime(endElem.value);
             
             // Auto-update end time if it's recent
             const now = Date.now();
             const twoMinutesAgo = now - (2 * 60 * 1000);
-            if (endTime >= twoMinutesAgo) {
+            if (_endTime >= twoMinutesAgo) {
                 endTime = now;
                 endElem.value = formatLocalDateTime(endTime);
             }
             
+            // ensure endTime variable set for historical end time
+            if (typeof endTime === 'undefined') endTime = _endTime;
             hours = Math.ceil((endTime - startTime) / (60 * 60 * 1000));
+            isCustomRange = true;
         }
         // Default to last 24 hours
         else {
@@ -84,6 +91,8 @@ async function loadReceptionRange(hoursBack = null) {
         }
         
         summaryDiv.innerHTML = `<strong>Max Range:</strong> ${maxRange.toFixed(2)} nm | <strong>Positions:</strong> ${positionCount.toLocaleString()} | <strong>Sector/Altitude Cells:</strong> ${Object.keys(sectors).length}`;
+        try { setComputedRangeUI('reception', startTime, endTime, isCustomRange); } catch (e) {}
+        try { hideSpinnerForTab('reception'); } catch (e) {}
         
         // Sort sectors by bearing, then altitude band
         const sortedSectors = Object.entries(sectors)
@@ -123,12 +132,13 @@ async function loadReceptionRange(hoursBack = null) {
         draw3DReceptionPlot(sortedSectors);
     } catch (error) {
         console.error('Error loading reception range:', error);
+        try { hideSpinnerForTab('reception', `<span style="color:#f44336;">Error loading reception</span>`); } catch (e) {}
     }
 }
 
 function drawBearingChart(bearingData, maxRange) {
     const canvas = document.getElementById('reception-bearing-canvas');
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
     const maxRadius = Math.min(canvas.width, canvas.height) / 2 - 40;
@@ -213,7 +223,7 @@ function drawBearingChart(bearingData, maxRange) {
 
 function drawAltitudeChart(altitudeData, maxRange) {
     const canvas = document.getElementById('reception-altitude-canvas');
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
@@ -517,6 +527,7 @@ function formatTimeAgo(timestamp) {
 
 // --- Tab Management ---
 function showTab(tabName, event) {
+    try { /* flights-specific detach removed; global handler manages custom ranges */ } catch (e) {}
     document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
     document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
     document.getElementById(`${tabName}-tab`).classList.add('active');
@@ -547,7 +558,22 @@ function showTab(tabName, event) {
     if (tabName === 'cache') {
         loadCacheStatus();
     }
+    // Hide global time controls for tabs that do not use time ranges
+    try {
+        const globalControl = document.getElementById('global-time-controls');
+        if (globalControl) {
+            // Live tab does not have a time-window control
+            const visibleTabs = ['airlines','positions','flights','squawk','heatmap','reception'];
+            if (visibleTabs.includes(tabName)) globalControl.style.display = 'block'; else globalControl.style.display = 'none';
+        }
+    } catch (e) {}
 }
+
+// Attach change/enter listeners to flights custom range inputs so that
+// exiting the custom time control triggers an automatic refresh of flights.
+// Deprecated: per-tab flights-specific listener removed in favor of global listeners
+
+// Deprecated: detachFlightsCustomRangeListeners removed in favor of global listener
 
 async function loadHistoricalStats() {
     try {
@@ -735,6 +761,36 @@ function updateLiveStats(data) {
     document.getElementById('min-range').textContent = minRange;
 }
 
+// TTL for local airline DB cache in ms (default 1 hour)
+const AIRLINE_DB_TTL_MS = (60 * 60 * 1000);
+
+function updateAirlineDBIndicator() {
+    const el = document.getElementById('airline-db-indicator');
+    if (!el) return;
+    try {
+        const item = localStorage.getItem('airlineDB-v1');
+        if (window.airlineDB) {
+            // Prefer window copy
+            el.innerHTML = `Airline DB: <em>loaded (in-memory)</em>`;
+            try { hideSpinnerForTab('cache', 'No cache data available'); } catch (e) {}
+            return;
+        }
+        if (item) {
+            const parsed = JSON.parse(item);
+            if (parsed && parsed.ts) {
+                const ageMs = Date.now() - parsed.ts;
+                const ageMinutes = Math.round(ageMs / 60000);
+                const ageStr = ageMinutes < 60 ? `${ageMinutes}m` : `${(ageMinutes / 60).toFixed(1)}h`;
+                el.innerHTML = `Airline DB: <em>local (${ageStr} old)</em>`;
+                return;
+            }
+        }
+    } catch (err) {
+        // ignore
+    }
+    el.innerHTML = `Airline DB: <em>not loaded</em>`;
+}
+
 function updateAircraftTable(aircraft) {
     const tableBody = document.getElementById('aircraft-table-body');
     
@@ -745,14 +801,64 @@ function updateAircraftTable(aircraft) {
     tableBody.innerHTML = '';
     if (!aircraft) return;
     
-    // Load airline database once
+    // Load airline database once (supports window cache and localStorage persistence)
     const loadAirlineDB = async () => {
         if (window.airlineDB) return window.airlineDB;
+        // Try localStorage first
+        try {
+            const item = localStorage.getItem('airlineDB-v1');
+            if (item) {
+                const parsed = JSON.parse(item);
+                if (parsed && parsed.ts && (Date.now() - parsed.ts) < AIRLINE_DB_TTL_MS && parsed.data) {
+                    window.airlineDB = parsed.data;
+                    try { updateAirlineDBIndicator(); } catch (e) { /* ignore */ }
+                    return window.airlineDB;
+                }
+            }
+        } catch (err) {
+            // localStorage may be disabled or unavailable - ignore
+            console.warn('localStorage airlineDB read failed', err);
+        }
         try {
             const response = await fetch('/api/airline-database');
-            if (response.ok) {
-                window.airlineDB = await response.json();
-                return window.airlineDB;
+                if (response.ok) {
+                    window.airlineDB = await response.json();
+                    try { updateAirlineDBIndicator(); } catch (e) { /* ignore */ }
+                    // persist to localStorage
+                    try {
+                        localStorage.setItem('airlineDB-v1', JSON.stringify({ ts: Date.now(), data: window.airlineDB }));
+                    } catch (err) {
+                        console.warn('localStorage airlineDB write failed', err);
+                    }
+                    return window.airlineDB;
+            }
+            // If the server returns 304 Not Modified, try to use a previously cached copy
+                if (response.status === 304) {
+                if (window.airlineDB) return window.airlineDB;
+                    // try localStorage if we haven't yet
+                    try {
+                        const item = localStorage.getItem('airlineDB-v1');
+                        if (item) {
+                            const parsed = JSON.parse(item);
+                            if (parsed && parsed.ts && (Date.now() - parsed.ts) < AIRLINE_DB_TTL_MS && parsed.data) {
+                                window.airlineDB = parsed.data;
+                                try { updateAirlineDBIndicator(); } catch (e) { /* ignore */ }
+                                return window.airlineDB;
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('localStorage airlineDB read failed (304 fallback)', err);
+                    }
+                // If we don't already have a cached copy, re-fetch with cache disabled
+                const forced = await fetch('/api/airline-database', { cache: 'no-cache' });
+                if (forced.ok) {
+                    window.airlineDB = await forced.json();
+                    try { updateAirlineDBIndicator(); } catch (e) { /* ignore */ }
+                        try {
+                            localStorage.setItem('airlineDB-v1', JSON.stringify({ ts: Date.now(), data: window.airlineDB }));
+                        } catch (err) { console.warn('localStorage airlineDB write failed', err); }
+                    return window.airlineDB;
+                }
             }
         } catch (err) {
             console.warn('Could not load airline database:', err);
@@ -902,8 +1008,10 @@ function updateAircraftTable(aircraft) {
 
 async function loadAirlineStats(hoursBack = null) {
     try {
-        const startElem = document.getElementById('airline-start-time');
-        const endElem = document.getElementById('airline-end-time');
+        try { window._lastLoadAirlineStats = Date.now(); } catch (e) {}
+        try { showSpinnerForTab('airlines'); } catch (e) {}
+        const startElem = document.getElementById('airline-start-time') || document.getElementById('positions-start-time');
+        const endElem = document.getElementById('airline-end-time') || document.getElementById('positions-end-time');
         
         // Helper function to format timestamp as local datetime string
         const formatLocalDateTime = (timestamp) => {
@@ -917,12 +1025,14 @@ async function loadAirlineStats(hoursBack = null) {
         };
         
         let windowVal = '1h'; // default
+        let startTime, endTime;
+        let isCustomRange = false;
         
         // If hoursBack is provided, use it (from quick buttons)
         if (hoursBack !== null) {
             const now = new Date();
-            const endTime = now.getTime();
-            const startTime = endTime - (hoursBack * 60 * 60 * 1000);
+            endTime = now.getTime();
+            startTime = endTime - (hoursBack * 60 * 60 * 1000);
             
             // Update input fields
             startElem.value = formatLocalDateTime(startTime);
@@ -940,8 +1050,8 @@ async function loadAirlineStats(hoursBack = null) {
                 return new Date(year, month - 1, day, hours, minutes, 0, 0).getTime();
             };
             
-            const startTime = parseLocalDateTime(startElem.value);
-            let endTime = parseLocalDateTime(endElem.value);
+            startTime = parseLocalDateTime(startElem.value);
+            endTime = parseLocalDateTime(endElem.value);
             
             // Auto-update end time if it's recent
             const now = Date.now();
@@ -952,13 +1062,14 @@ async function loadAirlineStats(hoursBack = null) {
             }
             
             const hours = Math.ceil((endTime - startTime) / (60 * 60 * 1000));
+            isCustomRange = true;
             windowVal = hours + 'h';
         }
         // Default to last 1 hour
         else {
             const now = new Date();
-            const endTime = now.getTime();
-            const startTime = endTime - (1 * 60 * 60 * 1000);
+            endTime = now.getTime();
+            startTime = endTime - (1 * 60 * 60 * 1000);
             
             startElem.value = formatLocalDateTime(startTime);
             endElem.value = formatLocalDateTime(endTime);
@@ -993,6 +1104,13 @@ async function loadAirlineStats(hoursBack = null) {
         const table = tableBody.closest('table');
         saveTableSortState(table);
         
+        // Build a map of existing rows keyed by flight key so we can reuse nodes and avoid blinking
+        const existingFlightRows = new Map();
+        try {
+            const rows = Array.from(tableBody.querySelectorAll('tr'));
+            rows.forEach(r => { if (r.dataset && r.dataset.flightKey) existingFlightRows.set(r.dataset.flightKey, r); });
+        } catch (e) { /* ignore */ }
+        // We'll clear tableBody and re-append reused/new rows; the old nodes are either reused or removed
         tableBody.innerHTML = '';
 
         sources.forEach(src => {
@@ -1094,13 +1212,18 @@ async function loadAirlineStats(hoursBack = null) {
         
         // Restore sort state after populating table
         restoreTableSortState(table);
+        try { setComputedRangeUI('airlines', startTime, endTime, isCustomRange); } catch (e) {}
+        try { hideSpinnerForTab('airlines'); } catch (e) {}
     } catch (error) {
         console.error('Error loading or processing airline stats:', error);
+        try { hideSpinnerForTab('airlines', `<span style="color:#f44336;">Error loading airlines</span>`); } catch (e) {}
     }
 }
 
 async function loadAirlineFlights(airlineCode, airlineName, windowVal) {
     try {
+        try { window._lastLoadAirlineFlights = Date.now(); } catch (e) {}
+        try { showSpinnerForTab('airline-flights', 'Loading flights…'); } catch (e) {}
         const drilldownDiv = document.getElementById('airline-flights-drilldown');
         const titleElem = document.getElementById('airline-flights-title');
         const summaryElem = document.getElementById('airline-flights-summary');
@@ -1129,6 +1252,13 @@ async function loadAirlineFlights(airlineCode, airlineName, windowVal) {
         const table = tableBody.closest('table');
         saveTableSortState(table);
         
+        // Build a map of existing rows keyed by flight key so we can reuse nodes and avoid blinking
+        const existingFlightRows = new Map();
+        try {
+            const rows = Array.from(tableBody.querySelectorAll('tr'));
+            rows.forEach(r => { if (r.dataset && r.dataset.flightKey) existingFlightRows.set(r.dataset.flightKey, r); });
+        } catch (e) { /* ignore */ }
+        // We'll clear tableBody and re-append reused/new rows; the old nodes are either reused or removed
         tableBody.innerHTML = '';
         
         // Scroll to the drilldown section
@@ -1247,6 +1377,7 @@ async function loadAirlineFlights(airlineCode, airlineName, windowVal) {
         
         // Restore sort state after populating table
         restoreTableSortState(table);
+        try { hideSpinnerForTab('airline-flights'); } catch (e) {}
     } catch (error) {
         console.error('Error loading airline flights:', error);
         const summaryElem = document.getElementById('airline-flights-summary');
@@ -1269,8 +1400,29 @@ let positionDataSources = {
 
 async function loadUnifiedPositionStats(hoursBack = null) {
     try {
+    try { showSpinnerForTab('positions'); } catch (e) {}
         const startElem = document.getElementById('positions-start-time');
         const endElem = document.getElementById('positions-end-time');
+        // If a global time-window control exists on the page (heatmap or time-window), prefer it
+        const timeWindowSelect = document.getElementById('time-window') || document.getElementById('heatmap-window');
+        if (timeWindowSelect) {
+            const val = timeWindowSelect.value;
+            if (val) {
+                        switch (val) {
+                            case '1h': hoursBack = 1; break;
+                            case '4h': hoursBack = 4; break;
+                            case '6h': hoursBack = 6; break;
+                            case '8h': hoursBack = 8; break;
+                            case '12h': hoursBack = 12; break;
+                            case '24h': hoursBack = 24; break;
+                            case '1w': hoursBack = 168; break; // 7 * 24
+                            case '4w': hoursBack = 672; break; // 4 * 7 * 24
+                            case 'all': hoursBack = null; break;
+                        }
+            }
+                // Persist the time-window select if present
+                try { localStorage.setItem('positionsTimescale', String(timeWindowSelect.value || '24h')); } catch (e) {}
+        }
         
         // Helper function to format timestamp as local datetime string
         const formatLocalDateTime = (timestamp) => {
@@ -1304,11 +1456,20 @@ async function loadUnifiedPositionStats(hoursBack = null) {
             endElem.value = formatLocalDateTime(endTime);
             
             hours = hoursBack;
+            // Update top-of-page select value if present and persist
+            try {
+                const sel = document.getElementById('time-window');
+                if (sel) {
+                    sel.value = hoursToSelectVal(hoursBack);
+                    localStorage.setItem('positionsTimescale', String(sel.value));
+                }
+            } catch (e) {}
         }
         // Use custom times if set
         else if (startElem && startElem.value && endElem && endElem.value) {
             startTime = parseLocalDateTime(startElem.value);
             endTime = parseLocalDateTime(endElem.value);
+                        isCustomRange = true;
             
             // Auto-update end time if it's recent
             const now = Date.now();
@@ -1431,9 +1592,14 @@ async function loadUnifiedPositionStats(hoursBack = null) {
         
         // === DRAW TIME SERIES GRAPH ===
         drawPositionsTimeSeriesGraph(positionDataSources[positionDataSources.active]);
+        try { setActivePositionButton(hours); } catch (e) {}
+        try { updatePositionsTimescaleIndicator(); } catch (e) {}
+        try { setComputedRangeUI('positions', startTime, endTime, isCustomRange); } catch (e) {}
+        try { hideSpinnerForTab('positions'); } catch (e) {}
         
-    } catch (error) {
+        } catch (error) {
         console.error('Error loading unified position stats:', error);
+            try { hideSpinnerForTab('positions', `<span style=\"color:#f44336;\">Error loading positions</span>`); } catch (e) {}
     }
 }
 
@@ -1464,11 +1630,276 @@ function updateActiveDataSource() {
     }
 }
 
+// Highlight the positions quickbutton matching the selected hours value (or clear highlighting for 'all')
+function setActivePositionButton(hours) {
+    try {
+        const btns = document.querySelectorAll('.positions-window-btn');
+        if (!btns || !btns.length) return;
+        btns.forEach(b => b.classList.remove('active'));
+        // Clear aria-pressed for all buttons
+        btns.forEach(b => { try { b.setAttribute('aria-pressed', 'false'); } catch (e) {} });
+        if (hours === null || typeof hours === 'undefined') {
+            // Highlight 'All' if present
+            const allMatch = Array.from(btns).find(b => String(b.dataset.hours) === 'all');
+            if (allMatch) { allMatch.classList.add('active'); allMatch.setAttribute('aria-pressed', 'true'); }
+            return;
+        }
+        const match = Array.from(btns).find(b => String(b.dataset.hours) === String(hours) || (String(hours) === '24' && String(b.dataset.hours) === '24'));
+        if (match) match.classList.add('active');
+        try { if (match) match.setAttribute('aria-pressed', 'true'); } catch (e) {}
+    } catch (e) { /* ignore errors */ }
+}
+
+// Map numeric hours (and null for 'all') to 'time-window' select value strings
+function hoursToSelectVal(hours) {
+    if (hours === null || typeof hours === 'undefined') return 'all';
+    switch (String(hours)) {
+        case '1': return '1h';
+        case '4': return '4h';
+        case '6': return '6h';
+        case '8': return '8h';
+        case '12': return '12h';
+        case '24': return '24h';
+        case '168': return '1w';
+        case '672': return '4w';
+        default: return '24h';
+    }
+}
+
+function selectValToHours(val) {
+    if (!val) return 24;
+    switch (val) {
+        case '1h': return 1;
+        case '4h': return 4;
+        case '6h': return 6;
+        case '8h': return 8;
+        case '12h': return 12;
+        case '24h': return 24;
+        case '1w': return 168;
+        case '4w': return 672;
+        case 'all': return null;
+        default: return 24;
+    }
+}
+
+// Handle global time control selection; dispatches to the appropriate loader for the active tab
+function handleGlobalTimeSelection(hours) {
+    try {
+        // Hours may be null for 'all'
+        const activeTabElem = document.querySelector('.tab-content.active');
+        let tabName = null;
+        if (activeTabElem && activeTabElem.id) {
+            tabName = activeTabElem.id.replace(/-tab$/, '');
+        }
+        // If no active tab found, default to positions
+        if (!tabName) tabName = 'positions';
+        // Set global time-window select value and persist
+        try {
+            const sel = document.getElementById('time-window');
+            if (sel) {
+                sel.value = hoursToSelectVal(hours);
+                localStorage.setItem('positionsTimescale', String(sel.value));
+            }
+        } catch (e) {}
+
+        // Map to loader functions
+        switch (tabName) {
+            case 'positions':
+                try { loadUnifiedPositionStats(hours); } catch (e) {}
+                break;
+            case 'reception':
+                try { loadReceptionRange(hours); } catch (e) {}
+                break;
+            case 'airlines':
+                try { loadAirlineStats(hours); } catch (e) {}
+                break;
+            case 'flights':
+                try { loadFlights(hours); } catch (e) {}
+                break;
+            case 'squawk':
+                try { loadSquawkTransitions(hours); } catch (e) {}
+                break;
+            case 'heatmap':
+                try { 
+                    // Set the select's value in the top-of-page control
+                    const sel = document.getElementById('time-window');
+                    if (sel) sel.value = hoursToSelectVal(hours);
+                    loadHeatmap();
+                } catch (e) {}
+                break;
+            default:
+                try { loadUnifiedPositionStats(hours); } catch (e) {}
+                break;
+        }
+        // Update storage and UI highlighting
+        try { const sel = document.getElementById('time-window'); if (sel) { localStorage.setItem('positionsTimescale', String(sel.value)); } } catch (e) {}
+        try { setActivePositionButton(hours); } catch (e) {}
+        try { setCustomRangeUI(false); } catch (e) {}
+    } catch (e) { /* ignore */ }
+}
+
+// Clear active quick buttons
+function clearActivePositionButtons() {
+    try {
+        const btns = document.querySelectorAll('.positions-window-btn');
+        btns.forEach(b => { b.classList.remove('active'); try { b.setAttribute('aria-pressed','false'); } catch (e) {} });
+    } catch (e) {}
+}
+
+// Apply or remove the green border around global start/end input to indicate custom range is active/returned
+function setCustomRangeUI(active) {
+    try {
+        const start = document.getElementById('positions-start-time');
+        const end = document.getElementById('positions-end-time');
+        if (start) {
+            if (active) start.classList.add('custom-range-active'); else start.classList.remove('custom-range-active');
+        }
+        if (end) {
+            if (active) end.classList.add('custom-range-active'); else end.classList.remove('custom-range-active');
+        }
+    } catch (e) {}
+}
+
+// Update computed range display for a given tab; startMS / endMS are millisecond timestamps
+function setComputedRangeUI(tabName, startMS, endMS, isCustom) {
+    try {
+        if (!startMS || !endMS) return;
+        const fmt = (ms) => {
+            const d = new Date(ms);
+            return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+        };
+        const rangeText = `${fmt(startMS)} → ${fmt(endMS)}`;
+        // Map tabName to summary element ids
+        const mapping = {
+            'positions': 'positions-timescale-indicator',
+            'flights': 'flights-summary',
+            'airlines': 'airline-stats-summary-last-hour',
+            'squawk': 'squawk-summary',
+            'reception': 'reception-summary',
+            'heatmap': 'heatmap-total-positions'
+        };
+        const id = mapping[tabName] || null;
+        if (!id) return;
+        const el = document.getElementById(id);
+        if (!el) return;
+        // For positions, replace the timescale indicator text if this is custom
+        if (tabName === 'positions') {
+            try { el.textContent = isCustom ? `Custom: ${rangeText}` : el.textContent; } catch (e) {}
+            try { setCustomRangeUI(isCustom); } catch (e) {}
+            return;
+        }
+        // For others, append or create a computed-range span
+        let cr = el.querySelector('.computed-range');
+        if (!cr) {
+            cr = document.createElement('span');
+            cr.className = 'computed-range';
+            el.appendChild(cr);
+        }
+        cr.textContent = `Range: ${rangeText}`;
+        // Add green border on the main summary area if custom
+        if (isCustom) el.classList.add('custom-range-active'); else el.classList.remove('custom-range-active');
+        // Also ensure global custom inputs reflect custom state
+        try { setCustomRangeUI(isCustom); } catch (e) {}
+    } catch (e) {}
+}
+
+// Mapping of tabName to a summary element ID for showing spinner/last-lookup
+const TAB_SUMMARY_ID_MAP = {
+    'positions': 'positions-timescale-indicator',
+    'flights': 'flights-summary',
+    'airlines': 'airline-stats-summary-last-hour',
+    'squawk': 'squawk-summary',
+    'reception': 'reception-summary',
+    'heatmap': 'heatmap-total-positions',
+    'cache': 'cache-summary'
+};
+TAB_SUMMARY_ID_MAP['airline-flights'] = 'airline-flights-summary';
+
+window._lastLookupTimes = window._lastLookupTimes || {};
+
+function formatTimeForUI(ts) {
+    if (!ts) return 'N/A';
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+}
+
+function showSpinnerForTab(tabName, message = 'Loading…') {
+    try {
+        const id = TAB_SUMMARY_ID_MAP[tabName] || null;
+        if (!id) return;
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.dataset._previousHtml = el.innerHTML; // save existing
+        el.innerHTML = `<span class="spinner" aria-hidden="true"></span><span class="loading-text">${message}</span>`;
+    } catch (e) { /* ignore */ }
+}
+
+function hideSpinnerForTab(tabName, replacementText = null) {
+    try {
+        const id = TAB_SUMMARY_ID_MAP[tabName] || null;
+        if (!id) return;
+        const el = document.getElementById(id);
+        if (!el) return;
+        // Set last lookup timestamp
+        const ts = Date.now();
+        window._lastLookupTimes[tabName] = ts;
+        const lastText = `<span class=\"computed-range\">Last lookup: ${formatTimeForUI(ts)}</span>`;
+        if (replacementText !== null) {
+            el.innerHTML = `${replacementText} ${lastText}`;
+        } else if (el.dataset._previousHtml) {
+            el.innerHTML = `${el.dataset._previousHtml} ${lastText}`;
+            delete el.dataset._previousHtml;
+        } else {
+            el.innerHTML = lastText;
+        }
+    } catch (e) { /* ignore */ }
+}
+
+// Attach global listeners to the positions start/end inputs so a custom range
+// will trigger the appropriate loader for the active tab.
+function attachGlobalCustomRangeListeners() {
+    try {
+        const start = document.getElementById('positions-start-time');
+        const end = document.getElementById('positions-end-time');
+        if (!start || !end) return;
+        if (start.dataset._globalListenersAttached) return;
+
+        const handler = async (e) => {
+            try {
+                if (!start.value || !end.value) return;
+                if (window._ignoreGlobalCustomRangeRefresher) return;
+                window._ignoreGlobalCustomRangeRefresher = true;
+                const activeTabElem = document.querySelector('.tab-content.active');
+                const tabName = activeTabElem && activeTabElem.id ? activeTabElem.id.replace(/-tab$/,'') : 'positions';
+                switch (tabName) {
+                    case 'positions': try { await loadPositionStats(); } catch (e) {} break;
+                    case 'flights': try { await loadFlights(); } catch (e) {} break;
+                    case 'airlines': try { await loadAirlineStats(); } catch (e) {} break;
+                    case 'squawk': try { await loadSquawkTransitions(); } catch (e) {} break;
+                    case 'reception': try { await loadReceptionRange(); } catch (e) {} break;
+                    case 'heatmap': try { await loadHeatmap(); } catch (e) {} break;
+                    case 'cache': try { await loadCachePositionStats(); } catch (e) {} break;
+                    default: break;
+                }
+            } finally { window._ignoreGlobalCustomRangeRefresher = false; }
+        };
+
+        start.addEventListener('change', handler);
+        end.addEventListener('change', handler);
+        start.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') handler(ev); });
+        end.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') handler(ev); });
+        start.dataset._globalListenersAttached = '1';
+    } catch (e) {}
+}
+
+// Optionally call attach on script load - ensure it's available when DOM ready
+try { window.addEventListener('DOMContentLoaded', () => { try { attachGlobalCustomRangeListeners(); } catch (e) {} }); } catch (e) {}
+
 function drawPositionsTimeSeriesGraph(memoryData) {
     const canvas = document.getElementById('positions-timeseries-canvas');
     if (!canvas) return;
     
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     if (!Array.isArray(memoryData) || memoryData.length === 0) {
@@ -1648,21 +2079,46 @@ function drawPositionsTimeSeriesGraph(memoryData) {
     ctx.fillText(titleText, canvas.width / 2, 25);
 }
 
+// Update the positions timeseries timescale indicator element with a human-readable timescale
+function updatePositionsTimescaleIndicator() {
+    try {
+        const el = document.getElementById('positions-timescale-indicator');
+        if (!el) return;
+        const timeWindowSelect = document.getElementById('time-window') || document.getElementById('heatmap-window');
+        if (timeWindowSelect && timeWindowSelect.value) {
+            const map = {
+                '1h': '1h', '4h': '4h', '6h': '6h', '8h': '8h', '12h': '12h', '24h': '24h', '1w': '1w', '4w': '4w', 'all': 'All time'
+            };
+            el.textContent = map[timeWindowSelect.value] || timeWindowSelect.value;
+            return;
+        }
+        // Otherwise show the manual start/end window
+        if (positionDataSources.startTime && positionDataSources.endTime) {
+            const ageMinutes = Math.round((positionDataSources.endTime - positionDataSources.startTime) / 60000);
+            if (ageMinutes < 60) el.textContent = `${ageMinutes}m`; else el.textContent = `${(ageMinutes/60).toFixed(0)}h`;
+            return;
+        }
+        el.textContent = 'Unknown';
+    } catch (e) { /* ignore */ }
+}
+
 async function loadPositionStatsLive() {
     try {
+        try { showSpinnerForTab('positions', 'Loading live stats…'); } catch (e) {}
         const minutes = parseInt(document.getElementById('positions-live-minutes').value || '10', 10);
         const resolution = parseInt(document.getElementById('positions-live-resolution').value || '1', 10);
         const resp = await fetch(`/api/position-timeseries-live?minutes=${minutes}&resolution=${resolution}`);
         const timeseries = await resp.json();
 
         const canvas = document.getElementById('position-timeseries-live-canvas');
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         if (!timeseries || !timeseries.length) {
             ctx.fillStyle = '#666';
             ctx.font = '14px sans-serif';
             ctx.fillText('No live data available.', 10, 20);
+            try { hideSpinnerForTab('positions', 'No live data available'); } catch (e) {}
             return;
         }
 
@@ -1814,6 +2270,7 @@ async function loadPositionStatsLive() {
 
 async function loadCachePositionStats() {
     try {
+    try { showSpinnerForTab('cache'); } catch (e) {}
         const resp = await fetch('/api/cache-status');
         const data = await resp.json();
         
@@ -1825,7 +2282,7 @@ async function loadCachePositionStats() {
             document.getElementById('cache-position-stats-summary').innerHTML = '<strong>No cache data available</strong>';
             const canvas = document.getElementById('cache-position-stats-canvas');
             if (canvas) {
-                const ctx = canvas.getContext('2d');
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.fillStyle = '#999';
                 ctx.font = '14px sans-serif';
@@ -1846,7 +2303,7 @@ async function loadCachePositionStats() {
         
         // Draw a simple bar chart showing cache composition
         const canvas = document.getElementById('cache-position-stats-canvas');
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
         // Draw title
@@ -1894,14 +2351,17 @@ async function loadCachePositionStats() {
         ctx.fillText('0', startX - 10, startY + 5);
         ctx.fillText('Max', startX - 15, startY - barHeight + 5);
         
+        try { hideSpinnerForTab('cache'); } catch (e) {}
     } catch (error) {
         console.error('Error loading cache position stats:', error);
         document.getElementById('cache-position-stats-summary').innerHTML = `<strong style="color: red;">Error: ${error.message}</strong>`;
+        try { hideSpinnerForTab('cache', `<span style=\"color:#f44336;\">Error loading cache stats</span>`); } catch (e) {}
     }
 }
 
 async function loadPositionStats() {
     try {
+        try { showSpinnerForTab('positions', 'Loading historical stats…'); } catch (e) {}
         // Check if time range inputs are provided
         const startElem = document.getElementById('positions-start-time');
         const endElem = document.getElementById('positions-end-time');
@@ -1940,13 +2400,14 @@ async function loadPositionStats() {
         const timeseries = Array.isArray(data.timeSeries) ? data.timeSeries : [];
 
         const canvas = document.getElementById('position-timeseries-canvas');
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         if (!timeseries || !timeseries.length) {
             ctx.fillStyle = '#666';
             ctx.font = '14px sans-serif';
             ctx.fillText('No data available for this time period.', 10, 20);
+            try { hideSpinnerForTab('positions', 'No data available for this time period'); } catch (e) {}
             return;
         }
 
@@ -1967,6 +2428,7 @@ async function loadPositionStats() {
             ctx.fillStyle = '#666';
             ctx.font = '14px sans-serif';
             ctx.fillText('Please select a metric to display.', 10, 20);
+            try { hideSpinnerForTab('positions', 'Please select a metric to display'); } catch (e) {}
             return;
         }
 
@@ -2127,15 +2589,18 @@ async function loadPositionStats() {
             legendX += ctx.measureText(labels[metric]).width + 30;
         });
 
+        try { hideSpinnerForTab('positions'); } catch (e) {}
     } catch (error) {
         console.error('Error loading position stats:', error);
+        try { hideSpinnerForTab('positions', `<span style="color:#f44336;">Error loading positions</span>`); } catch (e) {}
     }
 }
 
 async function loadSquawkTransitions(hoursBack = null) {
     try {
-        const startElem = document.getElementById('squawk-start-time');
-        const endElem = document.getElementById('squawk-end-time');
+        try { showSpinnerForTab('squawk'); } catch (e) {}
+        const startElem = document.getElementById('squawk-start-time') || document.getElementById('positions-start-time');
+        const endElem = document.getElementById('squawk-end-time') || document.getElementById('positions-end-time');
         
         // Helper function to format timestamp as local datetime string
         const formatLocalDateTime = (timestamp) => {
@@ -2186,6 +2651,7 @@ async function loadSquawkTransitions(hoursBack = null) {
                 // End time is in the past (historical query), keep it as-is
                 endTime = userEndTime;
             }
+            isCustomRange = true;
         }
         // Default to last 1 hour if no times are set
         else {
@@ -2216,6 +2682,7 @@ async function loadSquawkTransitions(hoursBack = null) {
                     <div style="font-size: 12px; color: #bbb; margin-top: 6px;">Time Range: ${timeRangeText}</div>
                 </div>
             `;
+            try { setComputedRangeUI('squawk', startTime, endTime, isCustomRange); } catch (e) {}
         }
 
         // Helper to format transitions
@@ -2326,9 +2793,10 @@ async function loadSquawkTransitions(hoursBack = null) {
         if (specialList) {
             specialList.innerHTML = special.length > 0 ? special.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).map(formatTransition).join('') : emptyMessage;
         }
-        if (otherList) {
+            if (otherList) {
             otherList.innerHTML = other.length > 0 ? other.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).map(formatTransition).join('') : emptyMessage;
         }
+            try { hideSpinnerForTab('squawk'); } catch (e) {}
             
     } catch (error) {
         console.error('Error loading squawk transitions:', error);
@@ -2341,9 +2809,12 @@ async function loadSquawkTransitions(hoursBack = null) {
 
 async function loadFlights(hoursBack = null) {
     try {
+        try { window._lastLoadFlights = Date.now(); } catch (e) {}
+        try { showSpinnerForTab('flights'); } catch (e) {}
+        let isCustomRange = false;
         const gap = document.getElementById('flights-gap').value || '5';
-        const startElem = document.getElementById('flights-start-time');
-        const endElem = document.getElementById('flights-end-time');
+        const startElem = document.getElementById('flights-start-time') || document.getElementById('positions-start-time');
+        const endElem = document.getElementById('flights-end-time') || document.getElementById('positions-end-time');
         
         // Helper function to format timestamp as local datetime string
         const formatLocalDateTime = (timestamp) => {
@@ -2356,7 +2827,7 @@ async function loadFlights(hoursBack = null) {
             return `${year}-${month}-${day}T${hours}:${minutes}`;
         };
         
-        let window = '1h'; // default
+        let windowVal = '1h'; // default
         
         // If hoursBack is provided, use it (from quick buttons)
         if (hoursBack !== null) {
@@ -2368,7 +2839,7 @@ async function loadFlights(hoursBack = null) {
             startElem.value = formatLocalDateTime(startTime);
             endElem.value = formatLocalDateTime(endTime);
             
-            window = hoursBack + 'h';
+            windowVal = hoursBack + 'h';
         }
         // Use custom times if set
         else if (startElem && startElem.value && endElem && endElem.value) {
@@ -2392,7 +2863,8 @@ async function loadFlights(hoursBack = null) {
             }
             
             const hours = Math.ceil((endTime - startTime) / (60 * 60 * 1000));
-            window = hours + 'h';
+            isCustomRange = true;
+            windowVal = hours + 'h';
         }
         // Default to last 1 hour
         else {
@@ -2403,16 +2875,28 @@ async function loadFlights(hoursBack = null) {
             startElem.value = formatLocalDateTime(startTime);
             endElem.value = formatLocalDateTime(endTime);
             
-            window = '1h';
+            windowVal = '1h';
         }
         
-        const response = await fetch(`/api/flights?gap=${gap}&window=${window}`);
+        // Show loading indicator in the flights summary area
+        try {
+            const summaryDiv = document.getElementById('flights-summary');
+            if (summaryDiv) summaryDiv.innerHTML = `<span class="spinner" aria-hidden="true"></span><span class="loading-text">Loading flights…</span>`;
+        } catch (err) {}
+        const response = await fetch(`/api/flights?gap=${gap}&window=${windowVal}`);
         const data = await response.json();
         const tableBody = document.getElementById('flights-table-body');
         
         // Save current sort state before clearing table
         const table = tableBody.closest('table');
         saveTableSortState(table);
+        
+        // Build a map of existing rows keyed by flight key so we can reuse nodes and avoid blinking
+        const existingFlightRows = new Map();
+        try {
+            const rows = Array.from(tableBody.querySelectorAll('tr'));
+            rows.forEach(r => { if (r.dataset && r.dataset.flightKey) existingFlightRows.set(r.dataset.flightKey, r); });
+        } catch (e) { /* ignore */ }
         
         tableBody.innerHTML = '';
         
@@ -2440,13 +2924,81 @@ async function loadFlights(hoursBack = null) {
             summaryDiv.innerHTML = 'No flights found';
         }
         
-        if (!data || (!data.flights && !data.active)) {
+            if (!data || (!data.flights && !data.active)) {
             tableBody.innerHTML = '<tr><td colspan="21">No flights found</td></tr>';
+                try { setComputedRangeUI('flights', startTime, endTime, isCustomRange); } catch (e) {}
+                try { if (summaryDiv) summaryDiv.innerHTML = 'No flights found'; } catch (e) {}
             return;
         }
 
+        // Load airline DB for fallback validations
+        const loadAirlineDB = async () => {
+            if (window.airlineDB) return window.airlineDB;
+            // Try localStorage first
+            try {
+                const item = localStorage.getItem('airlineDB-v1');
+                if (item) {
+                    const parsed = JSON.parse(item);
+                    if (parsed && parsed.ts && (Date.now() - parsed.ts) < AIRLINE_DB_TTL_MS && parsed.data) {
+                        window.airlineDB = parsed.data;
+                        try { updateAirlineDBIndicator(); } catch (e) { /* ignore */ }
+                        return window.airlineDB;
+                    }
+                }
+            } catch (error) {
+                try { console.error('Error loading airline flights:', error); } catch (e) {}
+                const summaryElem = document.getElementById('airline-flights-summary');
+                if (summaryElem) summaryElem.innerHTML = `<span style="color: #f44336;">Error loading flights: ${error.message}</span>`;
+                try { hideSpinnerForTab('airline-flights', `<span style=\"color:#f44336;\">Error loading flights</span>`); } catch (e) {}
+            }
+            // Try fetching airline database from server
+            try {
+                const resp = await fetch('/api/airline-database');
+                if (resp.ok) {
+                    window.airlineDB = await resp.json();
+                    try { updateAirlineDBIndicator(); } catch (e) { /* ignore */ }
+                    try { localStorage.setItem('airlineDB-v1', JSON.stringify({ ts: Date.now(), data: window.airlineDB })); } catch (err) { console.warn('localStorage airlineDB write failed', err); }
+                    return window.airlineDB;
+                }
+                if (resp.status === 304) {
+                    if (window.airlineDB) return window.airlineDB;
+                    // try localStorage if we haven't yet
+                    try {
+                        const item = localStorage.getItem('airlineDB-v1');
+                        if (item) {
+                            const parsed = JSON.parse(item);
+                            if (parsed && parsed.ts && (Date.now() - parsed.ts) < AIRLINE_DB_TTL_MS && parsed.data) {
+                                window.airlineDB = parsed.data;
+                                try { updateAirlineDBIndicator(); } catch (e) { /* ignore */ }
+                                return window.airlineDB;
+                            }
+                        }
+                    } catch (err) { console.warn('localStorage airlineDB read failed (304 fallback)', err); }
+                    const forced = await fetch('/api/airline-database', { cache: 'no-cache' });
+                    if (forced.ok) {
+                        window.airlineDB = await forced.json();
+                        try { updateAirlineDBIndicator(); } catch (e) { /* ignore */ }
+                        try { localStorage.setItem('airlineDB-v1', JSON.stringify({ ts: Date.now(), data: window.airlineDB })); } catch (err) { console.warn('localStorage airlineDB write failed', err); }
+                        return window.airlineDB;
+                    }
+                }
+            } catch (err) {
+                console.warn('Could not load airline database for flights table:', err);
+            }
+            return {};
+        };
+        const airlineDB = await loadAirlineDB();
+
         for (const fl of allUnique) {
-            const row = document.createElement('tr');
+            // Compute row key to support reusing rows across updates
+            const rowKey = `${(fl.icao||fl.hex||'').toLowerCase()}|${(fl.callsign||'').toUpperCase()}|${fl.start_time||''}|${fl.end_time||''}|${(fl.registration||'').toUpperCase()}`;
+            let row = existingFlightRows.get(rowKey);
+            if (row) {
+                // We will update the existing row's cells in place; avoid re-creating nodes when possible
+                existingFlightRows.delete(rowKey);
+            } else {
+                row = document.createElement('tr');
+            }
             // Compute duration if missing
             let duration = fl.duration_min;
             if (duration === undefined || duration === null) {
@@ -2475,36 +3027,126 @@ async function loadFlights(hoursBack = null) {
                 typeDisplay = `<span title="${fl.aircraft_model}">${fl.type || ''}</span>`;
             }
             
-            row.innerHTML = `
-                <td>${fl.icao}</td>
-                <td>${fl.callsign || ''}</td>
-                <td>${fl.airline_code || ''}</td>
-                <td>${fl.airline_name || ''}</td>
-                <td>${fl.airlineLogo ? `<img src="${fl.airlineLogo}" alt="${fl.airline_name} logo" style="height: 30px; max-width: 60px; object-fit: contain;">` : '—'}</td>
-                <td>${fl.registration || ''}</td>
-                <td>${typeDisplay}</td>
-                <td>${fl.manufacturer || ''}</td>
-                <td>${fl.manufacturerLogo ? `<img src="${fl.manufacturerLogo}" alt="${fl.manufacturer} logo" style="height: 30px; max-width: 60px; object-fit: contain;">` : '—'}</td>
-                <td>${fl.bodyType || ''}</td>
-                <td>${startTimeLocal}</td>
-                <td>${endTimeLocal}</td>
-                <td>${duration}</td>
-                <td>${fl.start_lat}</td>
-                <td>${fl.start_lon}</td>
-                <td>${fl.end_lat}</td>
-                <td>${fl.end_lon}</td>
-                <td>${fl.max_alt_ft || ''}</td>
-                <td>${fl.reports}</td>
-                <td>${fl.slant_range_start !== undefined && fl.slant_range_start !== null ? fl.slant_range_start.toFixed(2) : ''}</td>
-                <td>${fl.slant_range_end !== undefined && fl.slant_range_end !== null ? fl.slant_range_end.toFixed(2) : ''}</td>
-            `;
+            // Determine airline logo: prefer API-provided path, but only fall back to /api/v2logos/{airline_code}
+            // when the airline code exists in the loaded `airlineDB` to avoid N-number fallbacks.
+            const code = (fl.airline_code || '').toUpperCase();
+            const hasApiLogo = (fl.airlineLogo && fl.airlineLogo.length);
+            let logoSrc = hasApiLogo ? fl.airlineLogo : null;
+            if (!logoSrc && code && airlineDB && airlineDB[code] && airlineDB[code].logo) {
+                logoSrc = `/api/v2logos/${encodeURIComponent(code)}`;
+            }
+
+            // Ensure a global cache of preloaded logo images so we can reuse them across re-renders
+            if (!window._logoImgCache) window._logoImgCache = {};
+            // Build row elements to allow graceful image preload/fade-in and avoid layout blinks
+            const hexCell = document.createElement('td'); hexCell.textContent = fl.icao || '';
+            const callsignCell = document.createElement('td'); callsignCell.textContent = fl.callsign || '';
+            const airlineCodeCell = document.createElement('td'); airlineCodeCell.textContent = fl.airline_code || '';
+            const airlineNameCell = document.createElement('td'); airlineNameCell.textContent = fl.airline_name || '';
+            const airlineLogoCell = document.createElement('td');
+            // Create an image element but don't set src until it is preloaded so we don't flash
+            if (logoSrc) {
+                let logoImg = null;
+                // If we have a cached loaded image element for this logoSrc, clone it and reuse (fast, prevents blinking)
+                if (window._logoImgCache[logoSrc] && window._logoImgCache[logoSrc].src) {
+                    try { logoImg = window._logoImgCache[logoSrc].cloneNode(true); logoImg.style.opacity = '1'; } catch(e) { logoImg = null; }
+                }
+                if (!logoImg) {
+                    logoImg = document.createElement('img');
+                logoImg.alt = `${(fl.airline_name || fl.airline_code) + ' logo'}`;
+                logoImg.style.height = '30px';
+                logoImg.style.maxWidth = '60px';
+                logoImg.style.objectFit = 'contain';
+                logoImg.style.opacity = '0';
+                logoImg.style.transition = 'opacity 180ms ease-in';
+                logoImg.width = 60;
+                logoImg.height = 30;
+                // Preload and attach on success so the DOM doesn't show a broken or empty image first
+                    const pre = new Image();
+                    pre.onload = () => {
+                        logoImg.src = logoSrc;
+                    // Force a small delay so the browser has layout-ready before fade-in
+                    setTimeout(() => { logoImg.style.opacity = '1'; }, 10);
+                        // Store a clone into cache for subsequent reuse
+                        try { window._logoImgCache[logoSrc] = logoImg.cloneNode(true); } catch(e) {}
+                };
+                pre.onerror = () => {
+                    // If it fails, show a placeholder instead of leaving a broken image
+                    airlineLogoCell.textContent = '—';
+                };
+                    pre.src = logoSrc;
+                }
+                airlineLogoCell.appendChild(logoImg);
+            } else {
+                airlineLogoCell.textContent = '—';
+            }
+            const regCell = document.createElement('td'); regCell.textContent = fl.registration || '';
+            const typeCell = document.createElement('td'); typeCell.innerHTML = typeDisplay;
+            const manufacturerCell = document.createElement('td'); manufacturerCell.textContent = fl.manufacturer || '';
+            const manufacturerLogoCell = document.createElement('td');
+            if (fl.manufacturerLogo) {
+                const mImg = document.createElement('img');
+                mImg.alt = `${(fl.manufacturer || '') + ' logo'}`;
+                mImg.style.height = '30px'; mImg.style.maxWidth = '60px'; mImg.style.objectFit = 'contain';
+                // Set directly; manufacturer logos are typically static and cached
+                mImg.src = fl.manufacturerLogo;
+                manufacturerLogoCell.appendChild(mImg);
+            } else {
+                manufacturerLogoCell.textContent = '—';
+            }
+            const bodyTypeCell = document.createElement('td'); bodyTypeCell.textContent = fl.bodyType || '';
+            const startTimeCell = document.createElement('td'); startTimeCell.textContent = startTimeLocal || '';
+            const endTimeCell = document.createElement('td'); endTimeCell.textContent = endTimeLocal || '';
+            const durationCell = document.createElement('td'); durationCell.textContent = duration || '';
+            const startLatCell = document.createElement('td'); startLatCell.textContent = fl.start_lat || '';
+            const startLonCell = document.createElement('td'); startLonCell.textContent = fl.start_lon || '';
+            const endLatCell = document.createElement('td'); endLatCell.textContent = fl.end_lat || '';
+            const endLonCell = document.createElement('td'); endLonCell.textContent = fl.end_lon || '';
+            const maxAltCell = document.createElement('td'); maxAltCell.textContent = fl.max_alt_ft || '';
+            const reportsCell = document.createElement('td'); reportsCell.textContent = fl.reports || '';
+            const slantStartCell = document.createElement('td'); slantStartCell.textContent = (fl.slant_range_start !== undefined && fl.slant_range_start !== null) ? fl.slant_range_start.toFixed(2) : '';
+            const slantEndCell = document.createElement('td'); slantEndCell.textContent = (fl.slant_range_end !== undefined && fl.slant_range_end !== null) ? fl.slant_range_end.toFixed(2) : '';
+
+            // Append constructed cells in the expected order
+            row.appendChild(hexCell);
+            row.appendChild(callsignCell);
+            row.appendChild(airlineCodeCell);
+            row.appendChild(airlineNameCell);
+            row.appendChild(airlineLogoCell);
+            row.appendChild(regCell);
+            row.appendChild(typeCell);
+            row.appendChild(manufacturerCell);
+            row.appendChild(manufacturerLogoCell);
+            row.appendChild(bodyTypeCell);
+            row.appendChild(startTimeCell);
+            row.appendChild(endTimeCell);
+            row.appendChild(durationCell);
+            row.appendChild(startLatCell);
+            row.appendChild(startLonCell);
+            row.appendChild(endLatCell);
+            row.appendChild(endLonCell);
+            row.appendChild(maxAltCell);
+            row.appendChild(reportsCell);
+            row.appendChild(slantStartCell);
+            row.appendChild(slantEndCell);
+
+            // Ensure dataset key for future reuse
+            row.dataset.flightKey = rowKey;
             tableBody.appendChild(row);
         }
+        try { setComputedRangeUI('flights', startTime, endTime, isCustomRange); } catch (e) {}
+        try { if (summaryDiv) { /* update summary handled already */ } } catch (e) {}
+        try { hideSpinnerForTab('flights'); } catch (e) {}
+        // Ensure loading indicator removed if present
+        try { if (summaryDiv && summaryDiv.querySelector('.spinner')) { /* already updated above */ } } catch (e) {}
+        // Remove any leftover nodes in existingFlightRows (they were not present in current dataset)
+        existingFlightRows.forEach((r, k) => { try { r.remove(); } catch (e) {} });
         
         // Restore sort state after populating table
         restoreTableSortState(table);
     } catch (error) {
-        console.error('Error loading flights:', error);
+        try { console.error('Error loading flights:', (error && error.message) ? error.message : String(error), (error && error.stack) ? error.stack : ''); } catch (e) {}
+        try { hideSpinnerForTab('flights', `<span style="color:#f44336;">Error loading flights</span>`); } catch (e) {}
     }
 }
 
@@ -2513,6 +3155,7 @@ async function summarizeText() {
     const output = document.getElementById('gemini-output');
     if (!text) {
         output.textContent = 'Please enter text to summarize.';
+        try { hideSpinnerForTab('positions'); } catch (e) {}
         return;
     }
     try {
@@ -2707,9 +3350,84 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     });
+
+    // Event listeners for custom global start/end inputs
+    try {
+        const positionsStart = document.getElementById('positions-start-time');
+        const positionsEnd = document.getElementById('positions-end-time');
+        if (positionsStart && positionsEnd) {
+            const onCustomRangeChanged = () => {
+                try { clearActivePositionButtons(); } catch (e) {}
+                try { setCustomRangeUI(false); } catch (e) {}
+            };
+            positionsStart.addEventListener('input', onCustomRangeChanged);
+            positionsEnd.addEventListener('input', onCustomRangeChanged);
+        }
+    } catch (e) {}
+
+    // Add event listener for global time-window changes (index & heatmap 'time-window')
+    try {
+        const timeWindowSelect = document.getElementById('time-window') || document.getElementById('heatmap-window');
+        if (timeWindowSelect) {
+            timeWindowSelect.addEventListener('change', () => {
+                try { localStorage.setItem('positionsTimescale', String(timeWindowSelect.value)); } catch (e) {}
+                // Update active quick button
+                try { const hours = selectValToHours(timeWindowSelect.value); setActivePositionButton(hours); } catch (e) {}
+                // On change, dispatch the selection to the active tab loader
+                try { handleGlobalTimeSelection(selectValToHours(timeWindowSelect.value)); } catch (e) {}
+            });
+        }
+    } catch (e) {}
+
+    // Enhance quick buttons with keyboard support and accessible attributes
+    try {
+        const btns = document.querySelectorAll('.positions-window-btn');
+        if (btns && btns.length) {
+            btns.forEach(b => {
+                // Add keyboard activation
+                b.addEventListener('keydown', (ev) => {
+                    if (ev.key === 'Enter' || ev.key === ' ') {
+                        ev.preventDefault();
+                        b.click();
+                        return false;
+                    }
+                    return true;
+                });
+                // Ensure aria-pressed is set correctly on click
+                b.addEventListener('click', () => {
+                    try {
+                        const hoursVal = b.dataset.hours === 'all' ? null : Number(b.dataset.hours);
+                        const sel = document.getElementById('time-window');
+                        if (sel) {
+                            const savedVal = hoursToSelectVal(hoursVal);
+                            sel.value = savedVal;
+                            try { localStorage.setItem('positionsTimescale', String(savedVal)); } catch (e) {}
+                        }
+                        try { setActivePositionButton(hoursVal); } catch (e) {}
+                        // Dispatch selection to the active tab loader so the UI updates immediately
+                        try { handleGlobalTimeSelection(hoursVal); } catch (e) {}
+                    } catch (e) {}
+                });
+            });
+        }
+    } catch (e) {}
     
     // Load initial data for all tabs
     setTimeout(() => {
+        // Restore saved positions timescale if present (applies to index page 'time-window' and heatmap page too)
+        try {
+                const saved = localStorage.getItem('positionsTimescale');
+                if (saved) {
+                    const sel = document.getElementById('time-window') || document.getElementById('heatmap-window');
+                    if (sel) {
+                        try { sel.value = saved; } catch (e) {}
+                        const hours = selectValToHours(saved);
+                        try { setActivePositionButton(hours); } catch (e) {}
+                        // Dispatch the saved selection so the active tab loader updates accordingly
+                        try { handleGlobalTimeSelection(hours); } catch (e) {}
+                    }
+                }
+        } catch (e) {}
         loadFlights();
         loadAirlineStats();
         loadUnifiedPositionStats();
@@ -2742,7 +3460,7 @@ async function remakeHourlyRollup() {
 async function loadHeatmap() {
     const canvas = document.getElementById('heatmap-canvas');
     if (!canvas) return; // Don't run on pages without heatmap canvas
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const positionsElem = document.getElementById('heatmap-total-positions');
     
     try {
@@ -2885,8 +3603,29 @@ async function loadCacheStatus() {
                 html += `<div>${type}: ${count.toLocaleString()}</div>`;
             });
             html += `</div>`;
+
+            // Airline DB cache status (localStorage)
+            try {
+                const item = localStorage.getItem('airlineDB-v1');
+                if (item) {
+                    const parsed = JSON.parse(item);
+                    if (parsed && parsed.ts) {
+                        const ageMs = Date.now() - parsed.ts;
+                        const ageMinutes = Math.round(ageMs / 60000);
+                        const ageStr = ageMinutes < 60 ? `${ageMinutes}m` : `${(ageMinutes / 60).toFixed(1)}h`;
+                        html += `<div style="margin-top: 10px;"><strong>📚 Airline DB cache:</strong> stored locally <em>(${ageStr} old)</em></div>`;
+                    } else {
+                        html += `<div style="margin-top: 10px;"><strong>📚 Airline DB cache:</strong> present but missing timestamp</div>`;
+                    }
+                } else {
+                    html += `<div style="margin-top: 10px;"><strong>📚 Airline DB cache:</strong> not present in localStorage</div>`;
+                }
+            } catch (err) {
+                html += `<div style="margin-top: 10px; color: #ff9800;"><strong>📚 Airline DB cache:</strong> localStorage unavailable</div>`;
+            }
             
             statusDiv.innerHTML = html;
+            try { updateAirlineDBIndicator(); } catch (e) { /* ignore */ }
         }
     } catch (error) {
         console.error('Error loading cache status:', error);
@@ -2894,6 +3633,7 @@ async function loadCacheStatus() {
         if (statusDiv) {
             statusDiv.innerHTML = `<div style="color: #f44336;">❌ Error loading cache status: ${error.message}</div>`;
         }
+        try { updateAirlineDBIndicator(); } catch (e) { /* ignore */ }
     }
 }
 
@@ -2927,8 +3667,18 @@ async function clearHeatmapCache() {
     }
 }
 
+// Clear local airline DB cache stored in localStorage
+function clearAirlineDBCache() {
+    try {
+        localStorage.removeItem('airlineDB-v1');
+    } catch (err) { console.warn('Error clearing airlineDB localStorage', err); }
+    try { window.airlineDB = null; } catch (e) {}
+    try { updateAirlineDBIndicator(); } catch (e) {}
+}
+
 // Load cache status automatically when page loads
 window.addEventListener('DOMContentLoaded', () => {
+    try { updateAirlineDBIndicator(); } catch (e) { /* ignore */ }
     setTimeout(loadCacheStatus, 1000);
     // Auto-refresh every 30 seconds
     setInterval(loadCacheStatus, 30000);
@@ -2950,4 +3700,14 @@ window.addEventListener('DOMContentLoaded', () => {
     
     // Load initial heatmap with 7 days default
     loadHeatmap();
+    // If a global time-window control exists on this page, attach an event listener to update positions graph
+    try {
+        const timeWindowSelect = document.getElementById('time-window') || document.getElementById('heatmap-window');
+        if (timeWindowSelect) {
+            timeWindowSelect.addEventListener('change', () => {
+                console.log('Global time-window changed, reloading unified position stats...');
+                loadUnifiedPositionStats();
+            });
+        }
+    } catch (e) { /* ignore */ }
 });

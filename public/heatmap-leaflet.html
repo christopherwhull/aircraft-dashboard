@@ -231,17 +231,32 @@
         <header style="text-align: center; margin-bottom: 20px;">
             <img src="/media/airsquak.jpg" alt="AirSquawk Logo" style="max-width: 300px; height: auto;">
             <h1>AirSquawk</h1>
+            <div id="airline-db-indicator" style="color:#e0e0e0;margin-top:6px;font-size:12px;">Airline DB: <em>loading…</em></div>
         </header>
 
         <div class="controls">
             <div class="control-group">
+                <div id="positions-buttons" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                    <button class="positions-window-btn" data-hours="1" onclick="(typeof handleGlobalTimeSelection === 'function' ? handleGlobalTimeSelection(1) : loadGridData());" title="Show last 1 hour" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">1h</button>
+                    <button class="positions-window-btn" data-hours="4" onclick="(typeof handleGlobalTimeSelection === 'function' ? handleGlobalTimeSelection(4) : loadGridData());" title="Show last 4 hours" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">4h</button>
+                    <button class="positions-window-btn" data-hours="6" onclick="(typeof handleGlobalTimeSelection === 'function' ? handleGlobalTimeSelection(6) : loadGridData());" title="Show last 6 hours" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">6h</button>
+                    <button class="positions-window-btn" data-hours="8" onclick="(typeof handleGlobalTimeSelection === 'function' ? handleGlobalTimeSelection(8) : loadGridData());" title="Show last 8 hours" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">8h</button>
+                    <button class="positions-window-btn" data-hours="12" onclick="(typeof handleGlobalTimeSelection === 'function' ? handleGlobalTimeSelection(12) : loadGridData());" title="Show last 12 hours" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">12h</button>
+                    <button class="positions-window-btn" data-hours="24" onclick="(typeof handleGlobalTimeSelection === 'function' ? handleGlobalTimeSelection(24) : loadGridData());" title="Show last 24 hours" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">24h</button>
+                    <button class="positions-window-btn" data-hours="168" onclick="(typeof handleGlobalTimeSelection === 'function' ? handleGlobalTimeSelection(168) : loadGridData());" title="Show last 1 week" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">1w</button>
+                    <button class="positions-window-btn" data-hours="672" onclick="(typeof handleGlobalTimeSelection === 'function' ? handleGlobalTimeSelection(672) : loadGridData());" title="Show last 4 weeks" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">4w</button>
+                    <button class="positions-window-btn" data-hours="all" onclick="(typeof handleGlobalTimeSelection === 'function' ? handleGlobalTimeSelection(null) : loadGridData());" title="Show all time" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">All</button>
+                </div>
                 <label for="time-window">Time Window:</label>
-                <select id="time-window">
+                <select id="time-window" aria-label="Time Window" title="Select a time window for the heatmap">
                     <option value="1h">1 Hour</option>
                     <option value="4h">4 Hours</option>
+                    <option value="6h">6 Hours</option>
+                    <option value="8h">8 Hours</option>
                     <option value="12h">12 Hours</option>
                     <option value="24h" selected>24 Hours</option>
-                    <option value="7d">7 Days</option>
+                    <option value="1w">1 Week</option>
+                    <option value="4w">4 Weeks</option>
                     <option value="all">All Time</option>
                 </select>
             </div>
@@ -298,6 +313,9 @@
 
             <div class="control-group">
                 <button id="toggle-debug-dump" onclick="toggleDebugDump()">Show Debug Dump</button>
+            </div>
+            <div class="control-group">
+                <button id="clear-airline-db-cache" onclick="clearAirlineDBCache()" style="background:#ff9800">🗑️ Clear Airline DB Cache</button>
             </div>
 
             <button onclick="loadGridData()">🔄 Refresh</button>
@@ -380,6 +398,29 @@
     </div>
 
     <script>
+        function updateAirlineDBIndicator() {
+            const el = document.getElementById('airline-db-indicator');
+            if (!el) return;
+            try {
+                const item = localStorage.getItem('airlineDB-v1');
+                if (item) {
+                    const parsed = JSON.parse(item);
+                    if (parsed && parsed.ts) {
+                        const ageMs = Date.now() - parsed.ts;
+                        const ageMinutes = Math.round(ageMs / 60000);
+                        const ageStr = ageMinutes < 60 ? `${ageMinutes}m` : `${(ageMinutes / 60).toFixed(1)}h`;
+                        el.innerHTML = `Airline DB: <em>local (${ageStr} old)</em>`;
+                        return;
+                    }
+                }
+            } catch (e) {}
+            el.innerHTML = `Airline DB: <em>not loaded</em>`;
+        }
+
+        function clearAirlineDBCache() {
+            try { localStorage.removeItem('airlineDB-v1'); } catch (e) {}
+            updateAirlineDBIndicator();
+        }
         // Initialize map with dynamic centering based on config and receiver location
         async function initializeMap() {
             try {
@@ -418,6 +459,7 @@
                 // Initialize map
                 const map = L.map('map').setView([centerLat, centerLon], zoomLevel);
                 window.map = map;
+                try { updateAirlineDBIndicator(); } catch(e) {}
 
                 // Create dedicated panes for live markers and persistent tracks so they sit above grid layers
                 map.createPane('livePane');
@@ -550,6 +592,26 @@
         osmLayer.addTo(map);
         // Keep a handle to the layers control so we can add overlays once created
         const layersControl = L.control.layers(baseLayers, overlayLayers).addTo(map);
+        // Expose overlay/base layers and control so global helpers like saveSettings can access them
+        try { window.overlayLayers = overlayLayers; window.baseLayers = baseLayers; window.layersControl = layersControl; } catch(e) {}
+
+        // Register the Heatmap Grid overlay early so its label is present in the layers control
+        // always (prevents overlay toggle flakiness in tests by ensuring a consistent control entry)
+        try {
+            if (!gridLayer) gridLayer = L.layerGroup();
+            // Do NOT auto-add the placeholder grid to the map - keep it off by default.
+            // Toggling the overlay via the layers control will add it and trigger saveSettings.
+            try { layersControl.addOverlay(gridLayer, 'Heatmap Grid'); } catch (e) {}
+            try { window.gridLayer = gridLayer; } catch (e) {}
+            // Persist overlay add/remove and base layer changes so we always save
+            try {
+                map.on('overlayadd', (evt) => { try { console.log('overlayadd event; grid present?', !!(map.hasLayer && map.hasLayer(gridLayer))); saveSettings(); } catch (e) { console.warn('overlayadd handler failed', e); } });
+                map.on('overlayremove', (evt) => { try { console.log('overlayremove event; grid present?', !!(map.hasLayer && map.hasLayer(gridLayer))); saveSettings(); } catch (e) { console.warn('overlayremove handler failed', e); } });
+                map.on('baselayerchange', () => { try { console.log('baselayerchange'); saveSettings(); } catch (e) { console.warn('baselayerchange handler failed', e); } });
+            } catch(e) { console.warn('Failed to register layer change persistence', e); }
+            // Signal overlays ready to tests - grid overlay entry is present now
+            try { window.heatmapOverlaysReady = true; window.dispatchEvent(new Event('heatmap-overlays-ready')); } catch(e) {}
+        } catch (e) { console.warn('Failed to register placeholder Heatmap Grid overlay early', e); }
 
         // Add our track layers now that `map` is ready
         if (typeof liveTracksLayer !== 'undefined') liveTracksLayer.addTo(map);
@@ -620,15 +682,43 @@
                 colorMode: document.getElementById('color-mode').value,
                 scalingMode: document.getElementById('scaling-mode').value,
                 opacity: document.getElementById('opacity').value,
-                showBorders: document.getElementById('show-borders').checked
-                , showLive: document.getElementById('show-live').checked
-                , trackWindowMinutes: document.getElementById('track-window-input') ? document.getElementById('track-window-input').value : '1'
+                showBorders: document.getElementById('show-borders').checked,
+                showLive: document.getElementById('show-live').checked,
+                trackWindowMinutes: document.getElementById('track-window-input') ? document.getElementById('track-window-input').value : '1',
+                // Save layer selections: base layer and overlay keys
+                baseLayer: (() => {
+                    try {
+                        for (const k in baseLayers) if (baseLayers.hasOwnProperty(k)) {
+                            try { if (map.hasLayer(baseLayers[k])) return k; } catch(e){}
+                        }
+                    } catch(e) {}
+                    return null;
+                })(),
+                overlays: (() => {
+                    const out = [];
+                    try { console.log('saveSettings: map.hasLayer(gridLayer)?', !!(map.hasLayer && map.hasLayer(gridLayer))); } catch(e) {}
+                    try {
+                        // Standard overlays registered via overlayLayers (use global if available)
+                        const ols = (typeof window !== 'undefined' && window.overlayLayers) ? window.overlayLayers : (typeof overlayLayers !== 'undefined' ? overlayLayers : {});
+                        for (const k in ols) if (ols.hasOwnProperty(k)) {
+                                try { const has = !!(map.hasLayer && map.hasLayer(ols[k])); if (has) out.push(k); console.log('saveSettings overlayLayers:', k, has); } catch(e) {}
+                            }
+                        // Dynamic overlays that are not present on overlayLayers (Heatmap Grid, live/persist layers)
+                        try { const hasGrid = !!(map.hasLayer && map.hasLayer(gridLayer)); try { console.log('saveSettings: hasGrid =>', hasGrid); } catch(ex){} if (typeof gridLayer !== 'undefined' && gridLayer && hasGrid) out.push('Heatmap Grid'); } catch(e) {}
+                        try { if (typeof liveLayer !== 'undefined' && liveLayer && map.hasLayer(liveLayer)) out.push('Positions (Live)'); } catch(e) {}
+                        try { if (typeof persistentTracksLayer !== 'undefined' && persistentTracksLayer && map.hasLayer(persistentTracksLayer)) out.push('Persisted Tracks'); } catch(e) {}
+                        try { if (typeof liveTracksLayer !== 'undefined' && liveTracksLayer && map.hasLayer(liveTracksLayer)) out.push('Live Tracks'); } catch(e) {}
+                    } catch(e) {}
+                    return out;
+                })()
             };
-            setCookie('leafletHeatmapSettings', JSON.stringify(settings));
+            try { console.log('saveSettings overlays:', JSON.stringify(settings.overlays || [])); localStorage.setItem('leafletHeatmapSettings', JSON.stringify(settings)); } catch (e) { try { console.log('saveSettings overlays [cookie fallback]:', JSON.stringify(settings.overlays || [])); } catch(e){} setCookie('leafletHeatmapSettings', JSON.stringify(settings)); }
         }
 
         function loadSettings() {
-            const saved = getCookie('leafletHeatmapSettings');
+            let saved = null;
+            try { saved = localStorage.getItem('leafletHeatmapSettings') || null; } catch (e) { saved = null; }
+            if (!saved) saved = getCookie('leafletHeatmapSettings');
             if (saved) {
                 try {
                     const settings = JSON.parse(saved);
@@ -644,6 +734,31 @@
                     if (settings.trackWindowMinutes !== undefined && document.getElementById('track-window-input')) {
                         document.getElementById('track-window-input').value = settings.trackWindowMinutes;
                     }
+                    // Re-apply layer selections
+                    try {
+                        // Base layers: remove all then add selected
+                        if (settings.baseLayer && baseLayers && baseLayers[settings.baseLayer]) {
+                            for (const k in baseLayers) if (baseLayers.hasOwnProperty(k)) { try { map.removeLayer(baseLayers[k]); } catch(e){} }
+                            try { map.addLayer(baseLayers[settings.baseLayer]); } catch(e){}
+                        }
+                        // Overlays: add/remove overlays by name
+                        if (Array.isArray(settings.overlays) && overlayLayers) {
+                            for (const k in overlayLayers) if (overlayLayers.hasOwnProperty(k)) {
+                                if (settings.overlays.indexOf(k) !== -1) { try { map.addLayer(overlayLayers[k]); } catch (e) {} }
+                                else { try { map.removeLayer(overlayLayers[k]); } catch (e) {} }
+                            }
+                        }
+                        // Re-apply dynamic overlays not defined in overlayLayers
+                        try {
+                            if (Array.isArray(settings.overlays)) {
+                                if (settings.overlays.indexOf('Heatmap Grid') !== -1) { try { if (typeof gridLayer !== 'undefined' && gridLayer) map.addLayer(gridLayer); } catch (e) {} }
+                                else { try { if (typeof gridLayer !== 'undefined' && gridLayer) map.removeLayer(gridLayer); } catch (e) {} }
+                                if (settings.overlays.indexOf('Positions (Live)') !== -1) { try { if (typeof liveLayer !== 'undefined' && liveLayer) map.addLayer(liveLayer); } catch (e) {} } else { try { if (typeof liveLayer !== 'undefined' && liveLayer) map.removeLayer(liveLayer); } catch (e) {} }
+                                if (settings.overlays.indexOf('Persisted Tracks') !== -1) { try { if (typeof persistentTracksLayer !== 'undefined' && persistentTracksLayer) map.addLayer(persistentTracksLayer); } catch (e) {} } else { try { if (typeof persistentTracksLayer !== 'undefined' && persistentTracksLayer) map.removeLayer(persistentTracksLayer); } catch (e) {} }
+                                if (settings.overlays.indexOf('Live Tracks') !== -1) { try { if (typeof liveTracksLayer !== 'undefined' && liveTracksLayer) map.addLayer(liveTracksLayer); } catch (e) {} } else { try { if (typeof liveTracksLayer !== 'undefined' && liveTracksLayer) map.removeLayer(liveTracksLayer); } catch (e) {} }
+                            }
+                        } catch(e) {}
+                    } catch(e) { console.warn('Failed to re-apply layer settings', e); }
                 } catch (e) {
                     console.error('!!! CRITICAL ERROR loading settings:', e);
                 }
@@ -653,8 +768,89 @@
             }
         }
 
-        // Load settings on page load
-        loadSettings();
+        // NOTE: Do not call loadSettings() here because overlays may not yet be registered.
+        // loadSettings() will be invoked once after overlays are registered in updateGridDisplay().
+        // This avoids overwriting user toggles and prevents races between initial settings re-apply
+        // and subsequent overlay registration.
+        window._heatmapSettingsApplied = false;
+
+        // Restore positionsTimescale and wire up quick buttons for this page
+        try {
+            // Attach keyboard support and click behaviors to quick buttons
+            const pbtns = document.querySelectorAll('.positions-window-btn');
+            pbtns.forEach(b => {
+                b.addEventListener('keydown', (ev) => {
+                    if (ev.key === 'Enter' || ev.key === ' ') {
+                        ev.preventDefault();
+                        b.click();
+                        return false;
+                    }
+                    return true;
+                });
+                b.addEventListener('click', () => {
+                    try {
+                        const hoursSpec = b.dataset.hours;
+                        const sel = document.getElementById('time-window');
+                        if (sel) {
+                            if (hoursSpec === 'all') sel.value = 'all';
+                            else if (hoursSpec === '168') sel.value = '1w';
+                            else if (hoursSpec === '672') sel.value = '4w';
+                            else sel.value = `${hoursSpec}h`;
+                            try { localStorage.setItem('positionsTimescale', String(sel.value)); } catch (e) {}
+                        }
+                        // Refresh grid after updating the select
+                        try { loadGridData(); } catch (e) {}
+                    } catch (e) {}
+                });
+            });
+
+            // Restore persisted timescale if present and highlight active quick button on this page
+            try {
+                const saved = localStorage.getItem('positionsTimescale');
+                if (saved) {
+                    try { document.getElementById('time-window').value = saved; } catch (e) {}
+                    // Determine hours for 'positions-window-btn' matches
+                    let hours = null;
+                    if (saved === 'all') hours = null;
+                    else if (saved.endsWith('h')) hours = Number(saved.replace('h',''));
+                    else if (saved === '1w' || saved === '7d') hours = 168;
+                    else if (saved === '4w') hours = 672;
+                    // Clear existing active class
+                    try { document.querySelectorAll('.positions-window-btn').forEach(b => b.classList.remove('active')); } catch (e) {}
+                    if (typeof hours === 'number') {
+                        const b = Array.from(document.querySelectorAll('.positions-window-btn')).find(x => String(x.dataset.hours) === String(hours));
+                        if (b) b.classList.add('active');
+                    } else {
+                        const b = Array.from(document.querySelectorAll('.positions-window-btn')).find(x => String(x.dataset.hours) === 'all');
+                        if (b) b.classList.add('active');
+                    }
+                }
+            } catch (e) {}
+        } catch (e) {}
+        // Listen for positionsTimescale localStorage changes and update view accordingly
+        try {
+            window.addEventListener('storage', (e) => {
+                if (e.key === 'positionsTimescale') {
+                    const v = e.newValue || '';
+                    try { document.getElementById('time-window').value = v; } catch (e) {}
+                    // Map to hours and update buttons
+                    let hours = null;
+                    if (v === 'all') hours = null;
+                    else if (v.endsWith('h')) hours = Number(v.replace('h',''));
+                    else if (v === '1w' || v === '7d') hours = 168;
+                    else if (v === '4w') hours = 672;
+                    try { document.querySelectorAll('.positions-window-btn').forEach(b => b.classList.remove('active')); } catch (e) {}
+                    if (typeof hours === 'number') {
+                        const b = Array.from(document.querySelectorAll('.positions-window-btn')).find(x => String(x.dataset.hours) === String(hours));
+                        if (b) b.classList.add('active');
+                    } else {
+                        const b = Array.from(document.querySelectorAll('.positions-window-btn')).find(x => String(x.dataset.hours) === 'all');
+                        if (b) b.classList.add('active');
+                    }
+                    try { loadGridData(); } catch (e) {}
+                }
+            });
+        } catch (e) {}
 
         
 
@@ -712,7 +908,9 @@
             if (currentData) updateGridDisplay();
         });
 
-        document.getElementById('time-window').addEventListener('change', () => {
+        document.getElementById('time-window').addEventListener('change', (ev) => {
+            const val = ev.target.value;
+            try { localStorage.setItem('positionsTimescale', String(val)); } catch (e) {}
             saveSettings();
             loadGridData();
         });
@@ -1074,7 +1272,13 @@
         async function fetchAndDrawLongTracks() {
             try {
                 // gather visible hexes from liveMarkers
-                const bounds = map.getBounds();
+                // Ensure we prefer the Leaflet map object reference exposed on window, but fallback to local `map`.
+                const mapRef = (typeof window !== 'undefined' && window.map) ? window.map : map;
+                if (!mapRef || typeof mapRef.getBounds !== 'function') {
+                    console.warn('fetchAndDrawLongTracks: mapRef not ready or invalid:', mapRef);
+                    return;
+                }
+                const bounds = mapRef.getBounds();
                 const visible = [];
                 liveMarkers.forEach((marker, hex) => {
                     try {
@@ -2852,15 +3056,23 @@
         function updateGridDisplay() {
             if (!currentData || currentData.gridCells.length === 0) return;
 
-            // Remove old layer
-            if (gridLayer) map.removeLayer(gridLayer);
+            // Clear the existing grid layer's contents rather than recreating it.
+            // If the placeholder gridLayer was registered earlier, reuse it so the layer control stays stable.
+            try {
+                if (!gridLayer) gridLayer = L.layerGroup();
+                gridLayer.clearLayers();
+            } catch (e) {
+                // Fallback behavior: remove then recreate
+                try { if (gridLayer) map.removeLayer(gridLayer); } catch(e) {}
+            }
 
             const opacity = parseFloat(document.getElementById('opacity').value);
             const colorMode = document.getElementById('color-mode').value;
             const showBorders = document.getElementById('show-borders').checked;
 
             // Create feature group for all grid cells (placed into the dedicated heatmap pane)
-            gridLayer = L.featureGroup([]);
+            // Use the existing gridLayer (a LayerGroup) to host rectangles; keeps the same reference for the layers control.
+            try { if (!gridLayer) gridLayer = L.layerGroup(); } catch(e) { gridLayer = L.layerGroup(); }
 
             currentData.gridCells.forEach(cell => {
                 if (cell.count === 0) return;
@@ -2893,15 +3105,18 @@
                 gridLayer.addLayer(rectangle);
             });
 
-            gridLayer.addTo(map);
+            // We reuse the registered gridLayer: ensure it's added to map if not already
+            try { if (!map.hasLayer(gridLayer)) gridLayer.addTo(map); } catch(e) {}
 
-            // Register heatmap overlay in the layers control so users can toggle it
-            try { layersControl.addOverlay(gridLayer, 'Heatmap Grid'); } catch (e) {}
+                // Overlay registration / update completed - ensure tests know overlays are ready.
+                try { window.heatmapOverlaysReady = true; window.dispatchEvent(new Event('heatmap-overlays-ready')); } catch (e) { console.warn('Failed to dispatch heatmap-overlays-ready event', e); }
 
-            // Ensure live positions and persisted tracks overlays are available in the control
-            try { layersControl.addOverlay(liveLayer, 'Positions (Live)'); } catch (e) {}
-            try { layersControl.addOverlay(persistentTracksLayer, 'Persisted Tracks'); } catch (e) {}
-            try { layersControl.addOverlay(liveTracksLayer, 'Live Tracks'); } catch (e) {}
+            // Persist layer visibility changes
+            try {
+                map.on('overlayadd', () => { saveSettings(); });
+                map.on('overlayremove', () => { saveSettings(); });
+                map.on('baselayerchange', () => { saveSettings(); });
+            } catch (e) { console.warn('Failed to register layer change persistence', e); }
 
             // If the user has 'Show Live' checked, ensure live polling is started so tooltips populate
             try {
@@ -2928,6 +3143,13 @@
                     [currentData.bounds.maxLat, currentData.bounds.maxLon]
                 ]);
             }
+            // Re-apply saved overlay settings after overlays have been registered, but only once
+            try {
+                if (!window._heatmapSettingsApplied) {
+                    loadSettings();
+                    window._heatmapSettingsApplied = true;
+                }
+            } catch (e) { /* ignore */ }
         }
 
         async function resetMap() {

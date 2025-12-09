@@ -236,6 +236,43 @@ button:active {
   transform: scale(0.98);
 }
 
+.positions-window-btn {
+  background-color: #2a2a2a; /* match neutral button */
+  color: #42a5f5;
+  border: 1px solid #42a5f5;
+}
+.positions-window-btn.active {
+  background-color: #707070 !important;
+  color: #ffffff !important;
+  border-color: #707070 !important;
+}
+/* Accessibility: hover and focus styles for quick buttons */
+.positions-window-btn:hover,
+.positions-window-btn:focus {
+  background-color: #464646;
+  color: #ffffff;
+  border-color: #42a5f5;
+  outline: 2px solid rgba(66, 165, 245, 0.2);
+}
+.positions-window-btn:focus {
+  box-shadow: 0 0 0 3px rgba(66, 165, 245, 0.12);
+}
+
+/* Global time control wrapper for consistent placement */
+#global-time-controls {
+  display: block;
+  margin-top: 8px;
+  margin-bottom: 12px;
+}
+#global-time-controls #positions-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+#global-time-controls select {
+  margin-left: 8px;
+}
+
 label {
   color: #aaa;
   font-size: 14px;
@@ -283,3 +320,34 @@ div {
 ::-webkit-scrollbar-thumb:hover {
   background: #4a4a4a;
 }
+
+/* Custom range inputs state */
+.custom-range-active {
+    border: 2px solid #4caf50 !important; /* green border */
+    box-shadow: 0 0 6px rgba(76,175,80,0.25);
+}
+
+.computed-range {
+    display: inline-block;
+    margin-left: 8px;
+    color: #bdbdbd;
+    font-size: 0.9em;
+}
+
+/* Loading spinner */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #3a3a3a;
+  border-top-color: #14ffec;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spinner.hidden { display: none; }
+.loading-text { color: #bdbdbd; font-style: italic; }
