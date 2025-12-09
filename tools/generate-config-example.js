@@ -31,7 +31,7 @@ function writeExample() {
   const masked = maskSecrets(parsed);
 
   // Write templated JSON (human readable)
-  const jsonText = JSON5.stringify(masked, null, 2);
+  const jsonText = JSON.stringify(masked, null, 2);
   fs.writeFileSync(outPath, jsonText, 'utf8');
   console.log(`Exported masked example config to ${outPath}`);
 }
