@@ -31,8 +31,8 @@ function writeConfig() {
     configObj = config.getAll();
   }
 
-  // Write JSON5 so comments can be preserved in the future if needed
-  const jsonText = JSON5.stringify(configObj, null, 2);
+  // Write standard JSON (double quoted properties) so Python tools can parse config.json
+  const jsonText = JSON.stringify(configObj, null, 2);
   fs.writeFileSync(outPath, jsonText, 'utf8');
   console.log(`Exported config.json to ${outPath}`);
 }
