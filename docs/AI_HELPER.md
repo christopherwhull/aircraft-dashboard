@@ -111,12 +111,12 @@ Example:
 ## Contact Points
 - Main docs: `README.md`, `CONFIGURATION.md`, `LINUX_SETUP.md`, `MINIO_SETUP.md`
 - Tests: `__tests__/`, `tools/test_all.py`, `tools/test_s3_structure.py`
-- Server: `server.js`, `lib/api-routes.js`, `config.js`
+- Server: `server.js`, `lib/api-routes.js`, `config.json`
 - S3: Buckets `aircraft-data` (read) and `aircraft-data-new` (write)
 
 ## Logo Paths
 - S3 storage: `aircraft-data/logos/` (e.g., `logos/AAL.png`, `logos/CESSNA.png`)
-  - Bucket and prefix configurable via `config.js` (see `s3.buckets.read` and logo prefix settings)
+  - Bucket and prefix configurable via `config.json` (see `s3.buckets.read` and logo prefix settings)
 - Optional: `aircraft-data/manufacturer-logos/` (currently unused in this setup)
 - API endpoints: `GET /api/v1logos/:code` and `GET /api/v2logos/:code`
   - Examples: `/api/v1logos/AAL` → `logos/AAL.png`, `/api/v1logos/CESSNA` → `logos/CESSNA.png`

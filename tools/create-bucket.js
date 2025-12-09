@@ -13,7 +13,7 @@
  */
 
 const { S3Client, CreateBucketCommand, HeadBucketCommand, ListBucketsCommand } = require('@aws-sdk/client-s3');
-const config = require('../config.js');
+const config = require('../config-loader');
 
 const s3 = new S3Client({
     endpoint: config.s3.endpoint,
@@ -129,7 +129,7 @@ async function main() {
         console.error('');
         console.error('🔧 Troubleshooting:');
         console.error('- Ensure MinIO/S3 is running and accessible');
-        console.error('- Check S3 credentials in config.js');
+        console.error('- Check S3 credentials (config.json or environment variables)');
         console.error('- Verify network connectivity to S3 endpoint');
         process.exit(1);
     }

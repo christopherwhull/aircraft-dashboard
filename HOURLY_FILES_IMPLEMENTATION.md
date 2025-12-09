@@ -39,7 +39,7 @@ Modify the Node.js server to consume pre-built hourly files from the read bucket
 - [x] Add API endpoints to query hourly file availability and freshness
 
 ### Phase 5: Configuration Updates ✅ COMPLETED
-- [x] Update `config.js` with new bucket processing options
+- [x] Update `config.json` with new bucket processing options
 - [x] Add configuration flags for hourly file processing mode
 - [x] Update background job intervals for hourly file processing
 - [x] Add validation for hourly file data structure

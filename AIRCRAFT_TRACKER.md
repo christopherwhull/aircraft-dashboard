@@ -49,7 +49,7 @@ docker run -p 9000:9000 -p 9001:9001 minio/minio server /data --console-address 
 
 ## Usage
 
-Basic usage with defaults from `config.js`:
+Basic usage with defaults from `config.json`:
 ```bash
 python aircraft-tracker.py
 ```
@@ -71,15 +71,15 @@ python aircraft-tracker.py --read-only
 
 ## Configuration
 
-The script reads S3 credentials from `config.js` by default, which can be overridden by:
+The script reads S3 credentials from `config.json` by default, which can be overridden by:
 1. Environment variables (see `CONFIGURATION.md`)
 2. Command-line arguments (see `--help`)
 
 ### Command-Line Options
 
-- `--s3-endpoint URL` - S3/MinIO endpoint (default from config.js)
-- `--s3-access-key KEY` - S3 access key (default from config.js)
-- `--s3-secret-key SECRET` - S3 secret key (default from config.js)
+- `--s3-endpoint URL` - S3/MinIO endpoint (default from config.json)
+- `--s3-access-key KEY` - S3 access key (default from config.json)
+- `--s3-secret-key SECRET` - S3 secret key (default from config.json)
 - `--s3-bucket NAME` - Main data bucket (default: aircraft-data)
 - `--s3-kml-bucket NAME` - KML output bucket (default: output-kmls)
 - `--s3-reception-bucket NAME` - Reception data bucket (default: piaware-reception-data)
@@ -207,7 +207,7 @@ The script provides colorized console output:
 - Check firewall rules if using remote MinIO
 
 **S3 upload failures:**
-- Verify credentials in `config.js` match MinIO
+- Verify credentials in `config.json` match MinIO
 - Check bucket exists: Use MinIO console at `http://localhost:9001`
 - Ensure sufficient disk space for MinIO data directory
 
@@ -224,7 +224,7 @@ The dashboard server automatically reads from the S3 buckets populated by this t
 - Reception page visualizes the reception records
 - Airline/flight statistics aggregate from hourly files
 
-Both the tracker and dashboard should use the same S3 credentials configured in `config.js`.
+Both the tracker and dashboard should use the same S3 credentials configured in `config.json`.
 
 ## License
 

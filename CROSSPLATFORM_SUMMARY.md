@@ -114,7 +114,7 @@ npm run restart:unix
 ## 📋 Configuration
 
 All three startup methods use the same configuration:
-- `config.js` file (committed to repo)
+- `config.json` file (committed to repo)
 - Environment variables (take precedence)
 - Default values as fallbacks
 
@@ -123,9 +123,9 @@ No changes needed to startup code for different deployments.
 ## 🔄 Integration Points
 
 1. **Aircraft Tracker** - Uses same config via config_reader.py
-2. **Python Scripts** - All read from config.js via config_reader.py
+2. **Python Scripts** - All read from config.json via `config_reader.py`
 3. **Frontend** - Reads UI config from `/api/config` endpoint
-4. **S3 Storage** - Credentials centralized in config.js
+4. **S3 Storage** - Credentials centralized in config.json
 
 ## 📚 Documentation
 
@@ -137,7 +137,7 @@ No changes needed to startup code for different deployments.
 ## ✓ Verified Cross-Platform
 
 - ✅ `server.js` - No platform dependencies
-- ✅ `config.js` - Platform-agnostic configuration
+- ✅ `config.json` - Platform-agnostic configuration
 - ✅ Path handling - Uses `path.join()` throughout
 - ✅ File I/O - No hardcoded paths
 - ✅ Startup scripts - Windows (PowerShell) and Unix (Bash)
