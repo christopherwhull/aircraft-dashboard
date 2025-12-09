@@ -139,6 +139,43 @@ describe('API Routes', () => {
     });
   });
 
+  describe('GET /api/airline-database', () => {
+    test('should return the airline DB and set a Cache-Control header', async () => {
+      // Create a local app and inject a small airlineDB via opts so the route returns deterministic data
+      const localApp = express();
+      localApp.use(express.json());
+      const injectedAirlineDB = { TEST: { name: 'Test Airline', logo: '/api/v2logos/TEST' } };
+      setupApiRoutes(localApp, mockS3, mockReadBucket, mockWriteBucket, mockGetInMemoryState, mockCache, mockPositionCache, { airlineDB: injectedAirlineDB });
+
+      const response = await request(localApp)
+        .get('/api/airline-database')
+        .expect(200);
+
+      expect(response.headers['cache-control']).toBeDefined();
+      expect(response.headers['cache-control']).toMatch(/max-age=3600/);
+      expect(response.body).toHaveProperty('TEST');
+      expect(response.body.TEST).toHaveProperty('name', 'Test Airline');
+    });
+  });
+
+  describe('GET /api/airlines', () => {
+    test('should return the airline list and set a Cache-Control header', async () => {
+      const localApp = express();
+      localApp.use(express.json());
+      const injectedAirlineDB = { TEST: { name: 'Test Airline', logo: '/api/v2logos/TEST' } };
+      setupApiRoutes(localApp, mockS3, mockReadBucket, mockWriteBucket, mockGetInMemoryState, mockCache, mockPositionCache, { airlineDB: injectedAirlineDB });
+
+      const response = await request(localApp)
+        .get('/api/airlines')
+        .expect(200);
+
+      expect(response.headers['cache-control']).toBeDefined();
+      expect(response.headers['cache-control']).toMatch(/max-age=3600/);
+      expect(response.body).toHaveProperty('TEST');
+      expect(response.body.TEST).toHaveProperty('name', 'Test Airline');
+    });
+  });
+
   describe('GET /api/heatmap', () => {
     beforeEach(() => {
       // Mock the S3 helpers
@@ -218,6 +255,111 @@ describe('API Routes', () => {
       const our = active.find(f => (f.icao || '').toLowerCase() === 'abc123');
       expect(our).toBeDefined();
       expect(our.registration).toBe('N66TN');
+    });
+
+    test('should set airline_code and airlineLogo for known airline callsign', async () => {
+      // Prepare a flight with a callsign that includes airline code DAL
+      listS3Files.mockResolvedValue([{ Key: 'flights/hourly/test2.json' }]);
+      const flightJson = JSON.stringify([
+        {
+          icao: 'abc234',
+          callsign: 'DAL2738',
+          registration: 'N/A',
+          type: 'B738',
+          start_time: new Date().toISOString()
+        }
+      ]);
+      const stream = require('stream');
+      const readable = new stream.Readable({ read() {} });
+      readable.push(flightJson);
+      readable.push(null);
+      mockS3.send.mockResolvedValue({ Body: readable });
+
+      // Mock the airline DB to contain DAL entry
+      downloadAndParseS3File.mockResolvedValueOnce({ DAL: { name: 'Delta Air Lines', logo: '/api/v2logos/DAL' } });
+
+      const localApp = express();
+      localApp.use(express.json());
+      setupApiRoutes(localApp, mockS3, mockReadBucket, mockWriteBucket, mockGetInMemoryState, mockCache, mockPositionCache);
+
+      const response = await request(localApp).get('/api/flights');
+      expect(response.status).toBe(200);
+      const active = response.body.active || [];
+      const our = active.find(f => (f.icao || '').toLowerCase() === 'abc234');
+      expect(our).toBeDefined();
+      expect(our.airline_code).toBe('DAL');
+      expect(our.airline_name).toBe('Delta Air Lines');
+      expect(our.airlineLogo).toBe('/api/v2logos/DAL');
+    });
+
+    test('should NOT set airline_code for FAA registration-style callsigns (N123AB)', async () => {
+      listS3Files.mockResolvedValue([{ Key: 'flights/hourly/test3.json' }]);
+      const flightJson = JSON.stringify([
+        {
+          icao: 'def456',
+          callsign: 'N234KH',
+          registration: 'N/A',
+          type: 'C172',
+          start_time: new Date().toISOString()
+        }
+      ]);
+      const stream = require('stream');
+      const readable = new stream.Readable({ read() {} });
+      readable.push(flightJson);
+      readable.push(null);
+      mockS3.send.mockResolvedValue({ Body: readable });
+
+      // Provide an empty/unrelated airline DB
+      downloadAndParseS3File.mockResolvedValueOnce({});
+
+      const localApp = express();
+      localApp.use(express.json());
+      setupApiRoutes(localApp, mockS3, mockReadBucket, mockWriteBucket, mockGetInMemoryState, mockCache, mockPositionCache);
+
+      const response = await request(localApp).get('/api/flights');
+      expect(response.status).toBe(200);
+      const active = response.body.active || [];
+      const our = active.find(f => (f.icao || '').toLowerCase() === 'def456');
+      expect(our).toBeDefined();
+      expect(our.airline_code).toBeUndefined();
+      expect(our.airline_name).toBe('');
+      expect(our.airlineLogo).toBeUndefined();
+    });
+
+    test('should set airline_code but NOT set airlineLogo when DB has code with null logo', async () => {
+      // Prepare a flight with callsign that maps to ABC code
+      listS3Files.mockResolvedValue([{ Key: 'flights/hourly/test4.json' }]);
+      const flightJson = JSON.stringify([
+        {
+          icao: 'abc567',
+          callsign: 'ABC555',
+          registration: 'N/A',
+          type: 'A320',
+          start_time: new Date().toISOString()
+        }
+      ]);
+      const stream = require('stream');
+      const readable = new stream.Readable({ read() {} });
+      readable.push(flightJson);
+      readable.push(null);
+      mockS3.send.mockResolvedValue({ Body: readable });
+
+      // Airline DB contains ABC but with null logo
+      const localApp = express();
+      localApp.use(express.json());
+      // Inject airlineDB via opts to make test deterministic
+      setupApiRoutes(localApp, mockS3, mockReadBucket, mockWriteBucket, mockGetInMemoryState, mockCache, mockPositionCache, { airlineDB: { ABC: { name: 'ABC Airways', logo: null } } });
+
+      const response = await request(localApp).get('/api/flights');
+      expect(response.status).toBe(200);
+      const active = response.body.active || [];
+      const our = active.find(f => (f.icao || '').toLowerCase() === 'abc567');
+      expect(our).toBeDefined();
+      expect(our.airline_code).toBe('ABC');
+      expect(our.airline_name).toBe('ABC Airways');
+      // airlineLogo should not be set when DB logo is null
+      expect(our.airlineLogo).toBeUndefined();
+      // no db spy to restore since we used opts injection
     });
   });
 

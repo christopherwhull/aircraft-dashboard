@@ -8,11 +8,13 @@ const path = require('path');
 const puppeteer = require('puppeteer');
 
 async function run() {
+    const DEFAULT_TIMEOUT = 120000;
     const url = process.argv[2] || 'http://localhost:3002/heatmap-leaflet.html';
     const maybeOutdir = process.argv[3] || '';
     const outdir = (maybeOutdir && !maybeOutdir.startsWith('--')) ? maybeOutdir : path.join('screenshots', 'testplan', `leaflet-test-${Date.now()}`);
         const selectOverlays = (process.argv.indexOf('--select-overlays') !== -1);
         const collectPopups = (process.argv.indexOf('--collect-popups') !== -1);
+        const tabsTest = (process.argv.indexOf('--tabs') !== -1) || (process.argv.indexOf('--tabs-test') !== -1);
         const checkHexArgs = process.argv.filter(arg => arg.startsWith('--check-hex='));
         const checkHexes = [];
         const explicitCheckHexes = checkHexArgs.length > 0;
@@ -25,6 +27,24 @@ async function run() {
         }
         // default ignore pattern list for console errors
         const ignoreConsoleArgs = process.argv.filter(arg => arg.startsWith('--ignore-console='));
+        const reuseCheck = (process.argv.indexOf('--check-reuse') !== -1);
+        const assertV2logo = (process.argv.indexOf('--assert-v2logo') !== -1);
+        const assertReuse = (process.argv.indexOf('--assert-reuse') !== -1);
+        const assertAirlineDBStorage = (process.argv.indexOf('--assert-airline-db-storage') !== -1);
+        const maxAirlineDBAgeArg = process.argv.find(arg => arg.startsWith('--max-airline-db-age-min='));
+        const maxAirlineDBAgeMin = maxAirlineDBAgeArg ? parseInt(maxAirlineDBAgeArg.split('=')[1], 10) : 60;
+        const assertNo304 = (process.argv.indexOf('--assert-no-304') !== -1);
+        const max304Arg = process.argv.find(arg => arg.startsWith('--max-304='));
+        const max304 = max304Arg ? parseInt(max304Arg.split('=')[1], 10) : 1;
+        const reuseRepeatsArg = process.argv.find(arg => arg.startsWith('--reuse-repeats='));
+        const reuseRepeats = reuseRepeatsArg ? parseInt(reuseRepeatsArg.split('=')[1], 10) : 3;
+        const reuseThresholdArg = process.argv.find(arg => arg.startsWith('--reuse-threshold='));
+        const reuseThreshold = reuseThresholdArg ? parseFloat(reuseThresholdArg.split('=')[1]) : 0.9;
+        // If the user requested assertReuse but didn't pass --check-reuse, auto-enable the reuse check
+        if (assertReuse && !reuseCheck) {
+            console.log('Note: --assert-reuse provided without --check-reuse; enabling reuse check for assertions.');
+        }
+        const effectiveReuseCheck = reuseCheck || assertReuse;
         const defaultIgnorePatterns = [
             /https?:\/\/mesonet\.agron\.iastate\.edu\/.*sfc_analysis\/.*$/i
         ];
@@ -58,6 +78,9 @@ async function run() {
     const consoleErrors = [];
     const pageErrors = [];
     const network = [];
+    // Assertion containers (populated by various checks); declared early so checks can add failures arbitrarily
+    const assertionFailures = [];
+    const assertionWarnings = [];
 
     const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
     const page = await browser.newPage();
@@ -129,7 +152,8 @@ async function run() {
 
     console.log('Loading', url);
     try {
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+        await page.setDefaultTimeout(DEFAULT_TIMEOUT);
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: DEFAULT_TIMEOUT });
     } catch (err) {
         console.error('Initial page.goto failed:', err.message);
     }
@@ -279,6 +303,189 @@ async function run() {
         try { return document.querySelectorAll('.grid-cell').length > 0; } catch (e) { return false; }
     });
 
+    // Optional: Tab/time-range latency tests
+    const tabsTimeSummary = {};
+    if (tabsTest) {
+        console.log('Running tab time-range latency checks (--tabs)');
+        // Ensure we are on root page if available; prefer / if current url is heatmap-leaflet
+        try {
+            await page.goto(url.includes('/heatmap-leaflet.html') ? url.replace('/heatmap-leaflet.html', '/') : url, { waitUntil: 'networkidle2', timeout: DEFAULT_TIMEOUT });
+        } catch (err) { /* ignore */ }
+        // Wait for JS to be available
+        await new Promise(r => setTimeout(r, 1200));
+        const tabsToCheck = ['reception', 'flights', 'squawk'];
+        for (const t of tabsToCheck) {
+            try {
+                // Show the tab via global showTab if present
+                await page.evaluate(tab => { try { if (typeof showTab === 'function') showTab(tab); } catch(e){} }, t);
+                await new Promise(r => setTimeout(r, 500));
+                // Find quick buttons inside tab
+                const btnInfos = await page.evaluate(tab => {
+                    const out = [];
+                    try {
+                        const root = document.getElementById(tab + '-tab');
+                        if (!root) return out;
+                        const buttons = Array.from(root.querySelectorAll('button'));
+                        for (const b of buttons) {
+                            const txt = (b.innerText || '').trim();
+                            const onclick = b.getAttribute('onclick') || '';
+                            // Only include buttons that call a loadXYZ function (quick time buttons and refresh)
+                            if (/load(Recept|Flights|Squawk)/i.test(onclick) || /loadReceptionRange|loadFlights|loadSquawkTransitions/i.test(onclick)) {
+                                out.push({ text: txt, onclick });
+                            }
+                        }
+                    } catch (e) {}
+                    return out;
+                }, t);
+                tabsTimeSummary[t] = [];
+                for (let i = 0; i < btnInfos.length; i++) {
+                    const bi = btnInfos[i];
+                    // Parse a numeric hours argument if available
+                    let hours = null;
+                    const m = bi.onclick && bi.onclick.match(/\((\d+)\)/);
+                    if (m) hours = parseInt(m[1], 10);
+                    // Determine expected API URL fragment
+                    let apiFrag = null;
+                    if (t === 'reception') apiFrag = '/api/reception-range';
+                    else if (t === 'flights') apiFrag = '/api/flights';
+                    else if (t === 'squawk') apiFrag = '/api/squawk-transitions';
+                    // Skip buttons that are not quick time buttons (e.g., refresh without numeric arg) if we can't map an endpoint
+                    if (!apiFrag && !bi.onclick) continue;
+                    // Click the button and measure latency to the first matching API response
+                    const label = bi.text || `btn${i}`;
+                    console.log(`Tab ${t}: clicking '${label}' (onclick=${bi.onclick})`);
+                    const startMs = Date.now();
+                    // Prepare waitForResponse promise
+                    const p = (apiFrag) ? page.waitForResponse(resp => resp.url().indexOf(apiFrag) !== -1 && resp.status() >= 200 && resp.status() < 500, { timeout: DEFAULT_TIMEOUT }).catch(e => null) : Promise.resolve(null);
+                    // Click the button by index in the tab
+                    await page.evaluate((tab, index) => { try { const root = document.getElementById(tab + '-tab'); if (root) { const buttons = Array.from(root.querySelectorAll('button')); const btn = buttons[index]; if (btn) btn.click(); } } catch(e){} }, t, i);
+                    const resp = await p;
+                    const latency = Date.now() - startMs;
+                    let status = null, size = null, urlResp = null;
+                    if (resp) {
+                        try { status = resp.status(); urlResp = resp.url(); const headers = resp.headers(); if (headers['content-length']) size = parseInt(headers['content-length'], 10); } catch (e) {}
+                    }
+                    tabsTimeSummary[t].push({ label, hours, latencyMs: latency, status, url: urlResp, size });
+                    await new Promise(r => setTimeout(r, 250));
+                }
+                // After exercising buttons, if this is the flights tab, capture a table logo report
+                if (t === 'flights') {
+                    try {
+                        const flightsLogoReport = await page.evaluate(() => {
+                            const rows = Array.from(document.querySelectorAll('#flights-table tbody tr'));
+                            return rows.map(r => {
+                                try {
+                                    const tds = r.querySelectorAll('td');
+                                    const callsign = (tds[1] && tds[1].textContent) ? tds[1].textContent.trim() : '';
+                                    const airlineCode = (tds[2] && tds[2].textContent) ? tds[2].textContent.trim() : '';
+                                    const airlineName = (tds[3] && tds[3].textContent) ? tds[3].textContent.trim() : '';
+                                    const logoCell = tds[4];
+                                    const hasImg = !!(logoCell && logoCell.querySelector && logoCell.querySelector('img'));
+                                    return { callsign, airlineCode, airlineName, hasLogo: hasImg };
+                                } catch (e) { return null; }
+                            }).filter(Boolean);
+                        });
+                        fs.writeFileSync(path.join(outdir, 'flights-logo-report.json'), JSON.stringify(flightsLogoReport, null, 2));
+                        tabsTimeSummary[t].flightsLogoReport = `${path.join(outdir, 'flights-logo-report.json')}`;
+                    } catch (e) {
+                        // ignore
+                    }
+                    
+                    // Optional DOM reuse/flicker checks
+                    if (effectiveReuseCheck) {
+                        try {
+                            // Ensure rows have stable uids for comparison
+                            await page.evaluate(() => {
+                                const rows = Array.from(document.querySelectorAll('#flights-table tbody tr'));
+                                for (let i = 0; i < rows.length; i++) {
+                                    const r = rows[i];
+                                    if (!r.dataset.rowUid) r.dataset.rowUid = `row-${Date.now()}-${i}`;
+                                }
+                            });
+
+                            // Collect initial map
+                            const initial = await page.evaluate(() => {
+                                const out = {};
+                                const rows = Array.from(document.querySelectorAll('#flights-table tbody tr'));
+                                for (const r of rows) {
+                                    const key = r.dataset.flightKey || '';
+                                    const uid = r.dataset.rowUid || '';
+                                    const img = r.querySelector('td:nth-child(5) img');
+                                    const src = img ? img.src : null;
+                                    out[key] = { uid, src };
+                                }
+                                return out;
+                            });
+
+                            let uidChanged = 0;
+                            let logoChanged = 0;
+                            let totalCommon = 0;
+                            let totalAdded = 0;
+                            let totalRemoved = 0;
+                            for (let i = 0; i < reuseRepeats; i++) {
+                                // Trigger a refresh (click the 'Refresh' button in the flights tab)
+                                await page.evaluate(() => {
+                                    try { const root = document.getElementById('flights-tab'); const btn = Array.from(root.querySelectorAll('button')).find(b => (b.innerText||'').includes('Refresh') || (b.innerText||'').includes('🔄')); if (btn) btn.click(); } catch (e) {}
+                                });
+                                // Wait for an API flights response to ensure update finished
+                                await page.waitForResponse(resp => resp.url().indexOf('/api/flights') !== -1, { timeout: DEFAULT_TIMEOUT }).catch(() => null);
+                                // After update, collect map
+                                const updated = await page.evaluate(() => {
+                                    const out = {};
+                                    const rows = Array.from(document.querySelectorAll('#flights-table tbody tr'));
+                                    for (const r of rows) {
+                                        const key = r.dataset.flightKey || '';
+                                        const uid = r.dataset.rowUid || '';
+                                        const img = r.querySelector('td:nth-child(5) img');
+                                        const src = img ? img.src : null;
+                                        out[key] = { uid, src };
+                                    }
+                                    return out;
+                                });
+                                // Compare: added/removed/common
+                                const initialKeys = new Set(Object.keys(initial));
+                                const updatedKeys = new Set(Object.keys(updated));
+                                const commonKeys = Array.from(new Set([...initialKeys].filter(k => updatedKeys.has(k))));
+                                const addedKeys = Array.from(new Set([...updatedKeys].filter(k => !initialKeys.has(k))));
+                                const removedKeys = Array.from(new Set([...initialKeys].filter(k => !updatedKeys.has(k))));
+                                totalAdded += addedKeys.length;
+                                totalRemoved += removedKeys.length;
+                                totalCommon += commonKeys.length;
+                                for (const k of commonKeys) {
+                                    const v = initial[k];
+                                    const up = updated[k];
+                                    if (v.uid !== up.uid) uidChanged++;
+                                    if (v.src !== up.src) logoChanged++;
+                                }
+                                // Replace initial map for subsequent comparison
+                                Object.assign(initial, updated);
+                            }
+
+                            const reuseRate = totalCommon ? ((totalCommon - uidChanged) / totalCommon) : 1.0;
+                            const logoChangeRate = totalCommon ? (logoChanged / totalCommon) : 0.0;
+                            const reuseReport = { totalCommon, uidChanged, logoChanged, reuseRate, logoChangeRate, totalAdded, totalRemoved, reuseRepeats };
+                            fs.writeFileSync(path.join(outdir, 'leaflet-reuse-report.json'), JSON.stringify(reuseReport, null, 2));
+                            console.log('Wrote', path.join(outdir, 'leaflet-reuse-report.json'));
+                            if (reuseThreshold && reuseRate < reuseThreshold) {
+                                const warnStr = `Reuse rate below threshold: ${reuseRate} < ${reuseThreshold}`;
+                                console.warn(warnStr);
+                                if (assertReuse) assertionFailures.push(warnStr);
+                            }
+                            if (assertReuse && logoChangeRate > 0) {
+                                const warnStr = `Logo changed across refreshes: logoChangeRate=${logoChangeRate}, possible flicker.`;
+                                console.warn(warnStr);
+                                assertionFailures.push(warnStr);
+                            }
+                        } catch (e) {
+                            console.warn('DOM reuse/flicker check failed:', e && e.message);
+                        }
+                    }
+                }
+            } catch (e) { console.warn('Tab test failed for', t, e && e.message); }
+        }
+        try { fs.writeFileSync(path.join(outdir, 'tabs-time-summary.json'), JSON.stringify(tabsTimeSummary, null, 2)); console.log('Wrote', path.join(outdir, 'tabs-time-summary.json')); } catch (e) {}
+    }
+
     // Save screenshot
     const screenshotPath = path.join(outdir, 'leaflet-screenshot.png');
     await page.screenshot({ path: screenshotPath, fullPage: true });
@@ -289,6 +496,112 @@ async function run() {
     fs.writeFileSync(path.join(outdir, 'leaflet-network.json'), JSON.stringify(network, null, 2));
     fs.writeFileSync(path.join(outdir, 'leaflet-pane-summary.json'), JSON.stringify(paneSummary, null, 2));
     fs.writeFileSync(path.join(outdir, 'leaflet-layer-counts.json'), JSON.stringify(layerCounts, null, 2));
+
+    // If the network capture includes /api/v2logos requests, verify those codes exist in airline database
+    try {
+        const logoRequests = network.filter(n => n && n.url && n.url.indexOf('/api/v2logos/') !== -1);
+        if (logoRequests && logoRequests.length) {
+            const codes = Array.from(new Set(logoRequests.map(r => {
+                let p = r.url.split('/api/v2logos/')[1] || '';
+                p = p.split(/[?#]/)[0] || '';
+                try { p = decodeURIComponent(p); } catch(e) {}
+                return p;
+            })));
+            // Try to find the airline-database response captured earlier in network records
+            let airlineDb = null;
+            const dbRec = network.find(n => n && n.url && n.url.indexOf('/api/airline-database') !== -1 && n.event === 'response');
+            if (dbRec && dbRec.body) airlineDb = dbRec.body;
+            if (!airlineDb) {
+                try {
+                    airlineDb = await page.evaluate(async () => {
+                        try {
+                            const res = await fetch('/api/airline-database');
+                            if (res.ok) return await res.json();
+                            if (res.status === 304 && window.airlineDB) return window.airlineDB;
+                            // Fallback: try to refetch without cache
+                            const forced = await fetch('/api/airline-database', { cache: 'no-cache' });
+                            if (forced.ok) return await forced.json();
+                        } catch (e) {}
+                        return {};
+                    });
+                } catch(e) { airlineDb = {}; }
+            }
+            const dbKeys = new Set(Object.keys(airlineDb || {}));
+            const bad = codes.filter(c => c && !dbKeys.has(c));
+            const report = { codes, bad, codesCount: codes.length, badCount: bad.length };
+            fs.writeFileSync(path.join(outdir, 'leaflet-v2logo-request-report.json'), JSON.stringify(report, null, 2));
+            if (bad && bad.length) {
+                const warnStr = `Non-airline v2logo requests found: ${JSON.stringify(bad)}`;
+                console.warn(warnStr);
+                if (assertV2logo) assertionFailures.push(warnStr);
+            }
+            else console.log('All v2logo requests matched airline DB codes.');
+        }
+    } catch (e) { console.warn('v2logo check failed:', e && e.message); }
+
+    // --- 304 Conditional Response Check ---
+    try {
+        const responses304 = network.filter(n => n && n.event === 'response' && n.status === 304);
+        if (responses304 && responses304.length) {
+            // Count 304 responses per path for APIs
+            const counts = {};
+            for (const r of responses304) {
+                try {
+                    const urlObj = new URL(r.url);
+                    const pathname = urlObj.pathname || r.url;
+                    // We only care about API endpoints here to avoid noisy static assets
+                    if (!pathname.startsWith('/api/')) continue;
+                    counts[pathname] = (counts[pathname] || 0) + 1;
+                } catch(e) {
+                    // fallback to raw URL
+                    const p = r.url || '';
+                    if (p.indexOf('/api/') === -1) continue;
+                    counts[p] = (counts[p] || 0) + 1;
+                }
+            }
+            const report = { total304: responses304.length, perPath: counts };
+            fs.writeFileSync(path.join(outdir, 'leaflet-304-report.json'), JSON.stringify(report, null, 2));
+            console.log('Wrote', path.join(outdir, 'leaflet-304-report.json'));
+            // Evaluate assertions
+            if (assertNo304) {
+                const offenders = Object.keys(counts).filter(p => counts[p] > max304);
+                if (offenders.length) {
+                    const warnStr = `Repeated conditional 304 responses found for API paths: ${JSON.stringify(offenders)} (counts=${JSON.stringify(counts)})`;
+                    console.warn(warnStr);
+                    assertionFailures.push(warnStr);
+                } else {
+                    console.log('No repeated conditional 304 responses exceeded threshold');
+                }
+            }
+        }
+    } catch (e) { console.warn('304 check failed:', e && e.message); }
+
+    // Optional: Verify local client-side airline DB persisted in localStorage
+    if (assertAirlineDBStorage) {
+        try {
+            console.log('Checking for airlineDB localStorage presence...');
+            const raw = await page.evaluate(() => {
+                try { return localStorage.getItem('airlineDB-v1'); } catch (e) { return null; }
+            });
+            let parsed = null;
+            if (raw) {
+                try { parsed = JSON.parse(raw); } catch (e) { parsed = null; }
+            }
+            const ok = parsed && parsed.ts && parsed.data;
+            if (!ok) {
+                assertionFailures.push('Airline DB localStorage not present or invalid (airlineDB-v1 missing/invalid)');
+            } else {
+                const ageMin = Math.round((Date.now() - parsed.ts) / 60000);
+                if (ageMin > maxAirlineDBAgeMin) {
+                    assertionWarnings.push(`Airline DB localStorage is ${ageMin}m old (older than --max-airline-db-age-min=${maxAirlineDBAgeMin})`);
+                }
+                fs.writeFileSync(path.join(outdir, 'leaflet-airline-db.json'), JSON.stringify(parsed, null, 2));
+                console.log('Saved airline DB localStorage snapshot');
+            }
+        } catch (err) {
+            assertionFailures.push(`Error evaluating airline DB storage: ${err.message}`);
+        }
+    }
 
     // We will write run metadata after hex checks and assertions so selectedHexes/hex-check file are present.
 
@@ -487,8 +800,6 @@ async function run() {
     }
 
     // Now, optional additional assertions for popups and pane counts
-    const assertionFailures = [];
-    const assertionWarnings = [];
     try {
         if (collectPopups) {
             const pp = collectedPopups || [];
@@ -566,7 +877,7 @@ async function run() {
             runId: runId,
             timestamp: new Date().toISOString(),
             url: url,
-            flags: { selectOverlays, collectPopups, checkHexes },
+            flags: { selectOverlays, collectPopups, checkHexes, assertV2logo, assertReuse, assertNo304, reuseRepeats, reuseThreshold, max304 },
             artifacts: {
                 screenshot: screenshotPath,
                 popupsFile: (collectedPopups && collectedPopups.length) ? path.join(outdir, 'popups.json') : null,
@@ -584,6 +895,8 @@ async function run() {
                 consoleErrorCount: consoleErrors.length,
                 pageErrorCount: pageErrors.length,
                 hexCheckSummary: hexCheckResults
+                // tabsTimeSummary is written as a separate artifact; include in summary if present
+                , tabsTimeSummary: (typeof tabsTimeSummary !== 'undefined' ? tabsTimeSummary : null)
             },
             environment: { nodeVersion: process.version }
         };

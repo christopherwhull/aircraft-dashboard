@@ -21,7 +21,7 @@ function waitForEnter(message) {
 
 (async () => {
     const url = process.argv[2] || 'http://localhost:3002/heatmap-leaflet.html';
-    // Simple ignore list via query param: ?ignore_console=regex1&ignore_console=regex2
+A    // Simple ignore list via query param: ?ignore_console=regex1&ignore_console=regex2
     const ignoreConsoleParams = new URL(url, 'http://localhost').searchParams.getAll('ignore_console');
     const ignoreConsolePatterns = ignoreConsoleParams.map(p => { try { return new RegExp(p); } catch (e) { return null; } }).filter(Boolean);
     const screenshot = process.argv[3] || 'tools/leaflet-screenshot.png';
