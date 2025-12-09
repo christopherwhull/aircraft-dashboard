@@ -41,7 +41,7 @@ npm install
 ```
 
 3. **Configure the dashboard:**
-Edit `config.js` with your settings:
+Edit `config.json` with your settings:
 ```bash
 nano config.js
 ```

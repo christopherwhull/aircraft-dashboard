@@ -419,7 +419,7 @@ mc admin user passwd myminio minioadmin
 
 ### Update Configuration
 
-Edit `config.js`:
+Edit `config.json`:
 
 ```javascript
 s3: {

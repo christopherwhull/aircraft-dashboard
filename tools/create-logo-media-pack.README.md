@@ -51,12 +51,12 @@ The metadata JSON file contains:
 ## Requirements
 
 - **Node.js** - Version 14 or higher
-- **S3/MinIO access** - Configured in `config.js`
+-- **S3/MinIO access** - Configured in `config.json`
 - **Archiver package** - Automatically included in dependencies
 
 ## Configuration
 
-The script uses the S3 configuration from `config.js`:
+The script uses the S3 configuration from `config.json`:
 
 - **Bucket**: Uses `config.buckets.readBucket`
 - **Endpoint**: Uses `config.s3.endpoint`

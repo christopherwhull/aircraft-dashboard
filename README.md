@@ -21,7 +21,7 @@ Why it matters:
 > npm install
 > ```
 >
-> 2) Configure a PiAware endpoint in `config.js` or env var `PIAWARE_URL`
+> 2) Configure a PiAware endpoint in `config.json` or env var `PIAWARE_URL`
 >
 > 3) Start the server
 >
@@ -43,7 +43,7 @@ Why it matters:
 ## Project Structure
 
 - **`server.js`** - Main Node.js web server
-- **`config.js`** - Centralized configuration file
+- **`config.json`** - Centralized configuration file
 - **`api-routes.js`** - API endpoint definitions
 - **`tools/`** - Utility scripts for data analysis, testing, and maintenance (see `tools/README.md`)
  - **`docs/leaflet-test-plan.md`** - The Leaflet heatmap Puppeteer test plan and artifacts documentation (see `docs/leaflet-test-plan.md`)
@@ -145,9 +145,9 @@ npm install
 
 3. Configure settings — recommended
 
-There are two ways to configure the application: by editing `config.js` directly (dev), or by using environment variables (recommended for production and scripts).
+There are two ways to configure the application: by editing `config.json` directly (dev), or by using environment variables (recommended for production and scripts).
 
-The project loads `config.js` and then overrides values using environment variables via `process.env` (if defined). The most common configuration options are listed below — they map to the keys in `config.js`.
+The project loads `config.json` and then overrides values using environment variables via `process.env` (if defined). The most common configuration options are listed below — they map to the keys in `config.json`.
 
 Common environment variables and their mapping to `config.js`:
 - `PORT` -> `server.port` (default: 3002)
@@ -159,7 +159,7 @@ Common environment variables and their mapping to `config.js`:
 - `S3_SECRET_KEY` -> `s3.credentials.secretAccessKey` (default: minioadmin123)
 - `READ_BUCKET` -> `buckets.readBucket` (default: aircraft-data)
 - `WRITE_BUCKET` -> `buckets.writeBucket` (default: aircraft-data-new)
-- `READ_PREFIX` -> not directly used; use `buckets.s3Prefix` or set prefix on `buckets.s3Prefix` in `config.js`
+- `READ_PREFIX` -> not directly used; use `buckets.s3Prefix` or set prefix on `buckets.s3Prefix` in `config.json`
 
 For a full list of supported environment variables and config keys, see `CONFIGURATION.md`.
 
@@ -187,9 +187,9 @@ node server.js
 ```
 
 Notes:
-- Environment variables take precedence over `config.js`.
-- For development you may edit `config.js` and then restart the server; changes typically require a restart.
-- Never commit production secrets to the repository (`config.js` or a `.env` file) — use secure brokers or CI environment variable injection for production deployments.
+- Environment variables take precedence over `config.json`.
+- For development you may edit `config.json` and then restart the server; changes typically require a restart.
+- Never commit production secrets to the repository (`config.json` or a `.env` file) — use secure brokers or CI environment variable injection for production deployments.
 
 4. Start the server:
 
@@ -224,7 +224,7 @@ http://localhost:3002
 
 ## Configuration
 
-All configuration is centralized in `config.js`. Both Node.js server and Python utility scripts read from this single source.
+All configuration is centralized in `config.json`. Both Node.js server and Python utility scripts read from this single source.
 
 ### Quick Configuration
 
@@ -233,7 +233,7 @@ Use the interactive config helper (recommended):
 python tools/config_helper.py
 ```
 
-Or edit `config.js` directly to customize:
+Or edit `config.json` directly to customize:
 
 - **Data Source**: PiAware server URL
 - **S3 Storage**: MinIO/S3 endpoint and credentials
@@ -436,7 +436,7 @@ Several Python scripts are included for data analysis and diagnostics:
 - `tools/count_squawk_7days.py` - 7-day squawk transition analysis
 - `tools/count_squawk_7days_detailed.py` - Detailed squawk statistics
 
-All Python scripts use `tools/config_reader.py` to read configuration from `config.js`.
+All Python scripts use `tools/config_reader.py` to read configuration from `config.json`.
 
 ## Logo Management
 
@@ -482,7 +482,7 @@ node logo-tools/logo-manager.js report
 
 ### Storage
 
-Logos are stored in the read bucket in S3 (defaults shown, configurable via `config.js`):
+Logos are stored in the read bucket in S3 (defaults shown, configurable via `config.json`):
 - `aircraft-data/logos/` — Airline and manufacturer logos (e.g., `logos/AAL.png`, `logos/CESSNA.png`)
 - `aircraft-data/manufacturer-logos/` — Optional prefix (currently unused in this setup)
 
@@ -631,7 +631,7 @@ Media packs ensure consistent, complete data distribution across deployments and
   - `runtime/piaware_aircraft_log_YYYYMMDD_HHMM.json` — per-minute NDJSON files produced/consumed by the tracker
 - The directory is created at service start. The repo `.gitignore` excludes generated runtime files so they won't be committed.
 
-If you prefer a different location, set the corresponding environment variables or edit `config.js`:
+If you prefer a different location, set the corresponding environment variables or edit `config.json`:
 
 - `LOG_FILE`, `ACCESS_LOG_FILE`, and `STATE_FILE` environment variables control the file paths.
 
@@ -692,12 +692,12 @@ Christopher Hull
 
 1. **"Cannot connect to PiAware"**
    - Verify PiAware is running and accessible
-   - Check PIAWARE_URL in config.js matches your setup
+   - Check PIAWARE_URL in config.json matches your setup
    - Test: `curl http://piaware.local:8080/data/aircraft.json`
 
 2. **"S3/MinIO connection failed"**
    - Ensure MinIO is running: `docker ps` or check MinIO service
-   - Verify S3_ENDPOINT in config.js
+   - Verify S3_ENDPOINT in config.json
    - Check credentials are correct
 
 3. **"No data in dashboard"**

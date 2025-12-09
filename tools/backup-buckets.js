@@ -17,7 +17,7 @@
 const { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand, DeleteObjectsCommand } = require('@aws-sdk/client-s3');
 const fs = require('fs').promises;
 const path = require('path');
-const config = require('../config.js');
+const config = require('../config-loader');
 
 const s3 = new S3Client({
     endpoint: config.s3.endpoint,

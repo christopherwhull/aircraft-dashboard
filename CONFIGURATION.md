@@ -2,11 +2,11 @@
 
 ## Overview
 
-All configuration is centralized in `config.js`. Both Node.js and Python scripts read from this single source of truth.
+All configuration is centralized in `config.json`. Both Node.js and Python scripts read from this single source of truth.
 
 ## Configuration File
 
-**Location:** `config.js`
+**Location:** `config.json`
 
 Contains:
 - Server settings (port, log files)
@@ -34,9 +34,9 @@ All settings can be overridden via environment variables:
 
 ## Environment Variable Mapping (quick reference)
 
-Below is a short mapping of environment variables to the `config.js` keys. These are the most commonly configured values when running the server in a container or CI environment.
+Below is a short mapping of environment variables to the `config.json` keys. These are the most commonly configured values when running the server in a container or CI environment.
 
-| Environment Variable | config.js key | Default |
+| Environment Variable | config.json key | Default |
 |---|---|---|
 | `PORT` | `server.port` | `3002` |
 | `LOG_FILE` | `server.logFile` | `runtime/server.log` |
@@ -52,11 +52,11 @@ Below is a short mapping of environment variables to the `config.js` keys. These
 | `STATE_FILE` | `state.stateFile` | `runtime/dashboard-state.json` |
 | `LAST_DAILY_FILE` | `state.lastDailyFlightBuildFile` | `runtime/.last-daily-flight-build` |
 
-For a complete list of available configuration keys, see `config.js`. The table above contains the most frequently changed items for development and production setups.
+For a complete list of available configuration keys, see `config.json`. The table above contains the most frequently changed items for development and production setups.
 
 ## Python Scripts Configuration
 
-Python scripts use `config_reader.py` to read values from `config.js`:
+Python scripts use `config_reader.py` to read values from `config.json`:
 
 ```python
 from config_reader import get_config
@@ -70,7 +70,7 @@ BUCKET_NAME = config['write_bucket']
 
 ### Updated Python Scripts
 
-The following scripts now read from `config.js`:
+The following scripts now read from `config.json`:
 - `count_squawk_transitions_by_hour.py`
 - `count_squawk_1200.py`
 - `count_squawk_7days.py`
@@ -88,7 +88,7 @@ Output shows all configuration values (secrets are masked with asterisks).
 
 ## Security Best Practices
 
-1. **Development:** Use default values in `config.js`
+1. **Development:** Use default values in `config.json`
 2. **Production:** Override via environment variables
 3. **Never commit:** Production credentials to version control
 4. **Use .env files:** For local environment-specific overrides (add to .gitignore)
@@ -102,7 +102,7 @@ The default MinIO credentials (`minioadmin` / `minioadmin123`) are:
 
 ## Changing Configuration
 
-1. **For all environments:** Edit `config.js`
+1. **For all environments:** Edit `config.json`
 2. **For specific environment:** Set environment variables
 3. **Restart required:** Changes require server/script restart
 
@@ -160,12 +160,12 @@ node server.js
 ```
 
 Notes:
-- Environment variables have top priority — they override `config.js` values.
+- Environment variables have top priority — they override `config.json` values.
 - Use `.env` only for development; never commit production secrets.
 - In CI or production, inject secrets via your CI or secret management system instead of committing them.
 
 ## Configuration Priority
 
 1. Environment variables (highest priority)
-2. `config.js` defaults
+2. `config.json` defaults
 3. Hardcoded fallbacks (lowest priority)
