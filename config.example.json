@@ -1,168 +1,192 @@
 {
-  server: {
-    port: 3002,
-    logFile: 'runtime/server.log',
-    accessLogFile: 'runtime/access.log',
-    w3cLogDir: 'runtime/logs',
+  "server": {
+    "port": 3002,
+    "mainPort": 3002,
+    "tileProxyPort": 3004,
+    "logFile": "runtime/server.log",
+    "accessLogFile": "runtime/access.log",
+    "w3cLogDir": "runtime/logs"
   },
-  dataSource: {
-    piAwareUrl: 'http://192.168.0.161:8080/data/aircraft.json',
-    receiverTimeout: 5000,
+  "dataSource": {
+    "piAwareUrl": "http://192.168.0.161:8080/data/aircraft.json",
+    "receiverTimeout": 5000,
+    "receiverLat": 42,
+    "receiverLon": -87.5
   },
-  arcgis: {
-    apiKey: 'REPLACE_ME',
+  "arcgis": {
+    "apiKey": "REPLACE_ME"
   },
-  s3: {
-    endpoint: 'http://localhost:9000',
-    region: 'us-east-1',
-    credentials: {
-      accessKeyId: 'REPLACE_ME',
-      secretAccessKey: 'REPLACE_ME',
+  "s3": {
+    "endpoint": "http://localhost:9000",
+    "region": "us-east-1",
+    "credentials": {
+      "accessKeyId": "REPLACE_ME",
+      "secretAccessKey": "REPLACE_ME"
     },
-    forcePathStyle: true,
+    "forcePathStyle": true
   },
-  buckets: {
-    readBucket: 'aircraft-data',
-    writeBucket: 'aircraft-data-new',
-    s3Prefix: 'aircraft-data/',
+  "buckets": {
+    "readBucket": "aircraft-data",
+    "writeBucket": "aircraft-data-new",
+    "s3Prefix": "aircraft-data/"
   },
-  tsdb: {
-    type: 'timescale',
-    url: 'postgresql://timescale_user:CHANGE_ME@192.168.0.100:8181/aircraft_test',
-    db: 'aircraft_test',
-    user: 'timescale_user',
-    password: 'CHANGE_ME',
-    token: '',
-    measurement: 'aircraft_positions',
+  "tsdb": {
+    "type": "influxdb3",
+    "url": "http://127.0.0.1:8181",
+    "db": "airsquawk",
+    "user": "",
+    "password": "",
+    "token": "apiv3_zfjnod7a-_LaE9RFBQ80xdzuxW7NVQxJ0pGcbzLr-42gOJ57SmL1l8D-HHAiDxJciG6vUl0Uw0LxYWjRKT3aiQ",
+    "measurement": "aircraft_positions_new"
   },
-  state: {
-    stateFile: 'runtime/dashboard-state.json',
-    lastDailyFlightBuildFile: 'runtime/.last-daily-flight-build',
+  "state": {
+    "stateFile": "runtime/dashboard-state.json",
+    "lastDailyFlightBuildFile": "runtime/.last-daily-flight-build"
   },
-  retention: {
-    positionRetentionMs: 86400000,
-    gapMs: 300000,
-    minFlightDurationMs: 30000,
-    squawkRetentionDays: 7,
-    aircraftTrackingTimeoutMs: 60000,
+  "retention": {
+    "positionRetentionMs": 86400000,
+    "gapMs": 300000,
+    "minFlightDurationMs": 30000,
+    "squawkRetentionDays": 7,
+    "aircraftTrackingTimeoutMs": 60000
   },
-  aggregation: {
-    gridSizeForHeatmap: 0.01,
-    sectorDegrees: 10,
-    altitudeZoneSizeFeet: 5000,
+  "aggregation": {
+    "gridSizeForHeatmap": 0.01,
+    "sectorDegrees": 10,
+    "altitudeZoneSizeFeet": 5000
   },
-  backgroundJobs: {
-    fetchDataInterval: 1000,
-    saveStateInterval: 30000,
-    saveAircraftDataInterval: 60000,
-    buildFlightsInterval: 120000,
-    buildHourlyPositionsInterval: 300000,
-    aggregateAirlinesInterval: 300000,
-    aggregateSquawkInterval: 300000,
-    aggregateHistoricalInterval: 1800000,
-    remakeHourlyRollupInterval: 3600000,
+  "heatmap": {
+    "defaultOpacity": 0.7,
+    "mapCenter": {
+      "enabled": false,
+      "lat": 42,
+      "lon": -87.9,
+      "zoom": 7
+    }
   },
-  initialJobDelays: {
-    buildFlightsDelay: 5000,
-    buildHourlyPositionsDelay: 10000,
-    remakeHourlyRollupDelay: 15000,
+  "screenshots": {
+    "enabled": false,
+    "directory": "runtime/screenshots",
+    "width": 1280,
+    "height": 800,
+    "captureIntervalSeconds": 0
   },
-  positionCache: {
-    lookbackDays: 7,
+  "backgroundJobs": {
+    "fetchDataInterval": 1000,
+    "saveStateInterval": 30000,
+    "saveAircraftDataInterval": 60000,
+    "buildFlightsInterval": 120000,
+    "buildHourlyPositionsInterval": 300000,
+    "aggregateAirlinesInterval": 300000,
+    "aggregateSquawkInterval": 300000,
+    "aggregateHistoricalInterval": 1800000,
+    "remakeHourlyRollupInterval": 3600000
   },
-  api: {
-    heatmap: {
-      defaultHours: 24,
+  "initialJobDelays": {
+    "buildFlightsDelay": 5000,
+    "buildHourlyPositionsDelay": 10000,
+    "remakeHourlyRollupDelay": 15000
+  },
+  "positionCache": {
+    "lookbackDays": 7
+  },
+  "api": {
+    "heatmap": {
+      "defaultHours": 24
     },
-    positionTimeseries: {
-      defaultMinutes: 10,
-      defaultResolution: 1,
+    "positionTimeseries": {
+      "defaultMinutes": 10,
+      "defaultResolution": 1
     },
-    receptionRange: {
-      defaultHours: 24,
+    "receptionRange": {
+      "defaultHours": 24
     },
-    squawkTransitions: {
-      defaultHours: 24,
+    "squawkTransitions": {
+      "defaultHours": 24
     },
-    historicalStats: {
-      defaultHours: 168,
-      defaultResolution: 60,
+    "historicalStats": {
+      "defaultHours": 168,
+      "defaultResolution": 60
     },
-    flights: {
-      defaultWindow: '24h',
-      defaultGap: 5,
-    },
+    "flights": {
+      "defaultWindow": "24h",
+      "defaultGap": 5
+    }
   },
-  s3ListLimits: {
-    maxKeys: 1000,
-    maxPages: null,
+  "data": {
+    "piAwareUrl": "http://127.0.0.1:8080/data/aircraft.json",
+    "receiverTimeout": 5000
   },
-  dataProcessing: {
-    flightsLookbackHours: 24,
-    hourlyPositionLookbackDays: 7,
-    exportToCSV: true,
+  "s3ListLimits": {
+    "maxKeys": 1000,
+    "maxPages": null
   },
-  logging: {
-    level: 'info',
-    format: 'w3c',
-    enableW3C: true,
+  "dataProcessing": {
+    "flightsLookbackHours": 24,
+    "hourlyPositionLookbackDays": 7,
+    "exportToCSV": true
   },
-  reception: {
-    enableKML: true,
-    enableHeatmap: true,
+  "logging": {
+    "level": "info",
+    "format": "w3c",
+    "enableW3C": true
   },
-  ui: {
-    defaultTimeRanges: {
-      airlines: 1,
-      flights: 1,
-      squawk: 1,
-      heatmap: 24,
-      reception: 24,
-      positions: 24,
+  "reception": {
+    "enableKML": true,
+    "enableHeatmap": true
+  },
+  "ui": {
+    "defaultTimeRanges": {
+      "airlines": 1,
+      "flights": 1,
+      "squawk": 1,
+      "heatmap": 24,
+      "reception": 24,
+      "positions": 24
     },
-    quickTimeButtons: [
+    "quickTimeButtons": [
       {
-        label: '1 Hour',
-        hours: 1,
+        "label": "1 Hour",
+        "hours": 1
       },
       {
-        label: '6 Hours',
-        hours: 6,
+        "label": "6 Hours",
+        "hours": 6
       },
       {
-        label: '24 Hours',
-        hours: 24,
+        "label": "24 Hours",
+        "hours": 24
       },
       {
-        label: '7 Days',
-        hours: 168,
+        "label": "7 Days",
+        "hours": 168
       },
       {
-        label: '31 Days',
-        hours: 744,
-      },
+        "label": "31 Days",
+        "hours": 744
+      }
     ],
-    graph: {
-      positionTimeBins: 15,
-      showPositionsOnLeftAxis: true,
-      defaultMetrics: {
-        positions: true,
-        aircraft: true,
-        flights: true,
-        airlines: true,
-      },
+    "graph": {
+      "positionTimeBins": 15,
+      "showPositionsOnLeftAxis": true,
+      "defaultMetrics": {
+        "positions": true,
+        "aircraft": true,
+        "flights": true,
+        "airlines": true
+      }
     },
-    reception: {
-      bearingSectorSize: 15,
-      altitudeBinSize: 5000,
-      ringIntervals: 25,
+    "reception": {
+      "bearingSectorSize": 15,
+      "altitudeBinSize": 5000,
+      "ringIntervals": 25
     },
-    heatmap: {
-      gridCellSize: 1,
+    "heatmap": {
+      "gridCellSize": 1
     },
-    table: {
-      defaultSortColumn: 'count',
-      defaultSortDirection: 'desc',
-    },
-  },
+    "table": {
+      "defaultSortColumn": "count",
+      "defaultSortDirection": "desc"
+    }
+  }
 }
