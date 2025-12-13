@@ -385,6 +385,7 @@ function setupHeatmapEventListeners() {
             
             loadHeatmap(hoursBack);
         });
+        try { generateBtn.dataset.attached = '1'; } catch (e) {}
     }
     
     // Auto-load heatmap when window selection changes
@@ -520,6 +521,7 @@ function initializeScaleControls() {
             updateSliderDisplays();
             updateHeatmapScale();
         });
+        try { resetButton.dataset.attached = '1'; } catch (e) {}
     }
 
     // Preset functionality
@@ -549,6 +551,7 @@ function initializeScaleControls() {
                 alert(`Preset "${presetName}" saved!`);
             }
         });
+        try { savePresetButton.dataset.attached = '1'; } catch (e) {}
     }
 
     if (loadPresetButton) {
@@ -585,6 +588,7 @@ function initializeScaleControls() {
                 alert(`Preset "${presetName}" loaded!`);
             }
         });
+        try { loadPresetButton.dataset.attached = '1'; } catch (e) {}
     }
 
     // Initialize display values

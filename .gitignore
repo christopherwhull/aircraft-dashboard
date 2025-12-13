@@ -6,11 +6,12 @@ node_modules/
 !config.example.json
 !aircraft_types.json
 !tools/aircraft_types.json
+# Ignore token cache files with real tokens, allow example files
+tools/token_cache/*.json
+!tools/token_cache/*.json.example
 *.log
 *.ps1
-!tools/test_all.py
 *.py
-!tools/test_all.py
 !tools/test_endpoints.py
 !tools/run_tests.py
 !config_reader.py

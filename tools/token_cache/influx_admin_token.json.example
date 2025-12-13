@@ -1,0 +1,5 @@
+{
+  "host": "http://127.0.0.1:8086",
+  "cli_path": "C:\\influxdb3-core-3.7.0-windows_amd64",
+  "admin_token": "REPLACE_ME"
+}

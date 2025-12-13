@@ -26,6 +26,15 @@
     writeBucket: 'aircraft-data-new',
     s3Prefix: 'aircraft-data/',
   },
+  tsdb: {
+    type: 'timescale',
+    url: 'postgresql://timescale_user:CHANGE_ME@192.168.0.100:8181/aircraft_test',
+    db: 'aircraft_test',
+    user: 'timescale_user',
+    password: 'CHANGE_ME',
+    token: '',
+    measurement: 'aircraft_positions',
+  },
   state: {
     stateFile: 'runtime/dashboard-state.json',
     lastDailyFlightBuildFile: 'runtime/.last-daily-flight-build',

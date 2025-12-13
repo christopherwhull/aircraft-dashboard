@@ -30,7 +30,28 @@ Key benefits:
 > See the docs for advanced setup: [LINUX_SETUP.md](../LINUX_SETUP.md), [MINIO_SETUP.md](../MINIO_SETUP.md), and [CONFIGURATION.md](../CONFIGURATION.md).
 
 ---
+## Aircraft Tracker
 
+The `tools/aircraft-tracker.py` script is the data ingestion engine that collects ADS-B data from PiAware and stores it for the dashboard. It provides:
+
+- **Real-time Tracking**: Polls PiAware every 0.25 seconds for live aircraft data
+- **S3 Archival**: Stores minute-by-minute and hourly position snapshots to MinIO/S3
+- **TSDB Integration**: Optional writes to InfluxDB 3 for time-series analysis
+- **KML Generation**: Creates Google Earth visualizations of reception ranges
+- **Aircraft Enrichment**: Automatic lookup of types, registrations, and airlines
+
+### Basic Usage
+```bash
+# Start tracking with S3 uploads
+python tools/aircraft-tracker.py
+
+# Enable TSDB writes
+python tools/aircraft-tracker.py --enable-tsdb
+```
+
+See [AIRCRAFT_TRACKER.md](../AIRCRAFT_TRACKER.md) for complete documentation.
+
+---
 -## Quick Links
 - [Live Tab](Live.md) — Real-time aircraft tracking and live statistics  
 	**APIs used:** `/api/live-stats`, `/api/aircraft` (WebSocket updates)
@@ -55,6 +76,7 @@ Key benefits:
 
 ## Recent Documentation Updates
 - **December 2025 (v1.1.1)**: Added dedicated wiki pages for all 8 dashboard tabs (Live, Airlines, Flights, Positions, Squawk, Heatmap, Reception, Cache Status)
+- **December 2025 (v1.1.1)**: Updated Aircraft Tracker documentation with TSDB integration details
 - **December 2025 (v1.1.1)**: Fixed Cache Status Tab functionality with full HTML content, JavaScript handlers, and API integration
 - **November 2025 (v1.0.5)**: Added Logo Media Pack Generator for downloading all logos into ZIP archives
 - November 2025: Added a curated types database with UI & API enrichment for Manufacturer/Model/Body Type.

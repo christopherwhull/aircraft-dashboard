@@ -185,7 +185,7 @@ node tools/test-track-api.js         # Aircraft lookup
 node tools/test-squawk-api.js        # Squawk transitions
 node tools/test-logo-server.js       # Logo serving
 node tools/test-svg-icons.js         # Icon validation
-python tools/test_all.py            # Python integration
+python tools/stashed/test_all.py            # Python integration (stashed)
 python tools/test_endpoints.py      # API endpoints
 ```
 

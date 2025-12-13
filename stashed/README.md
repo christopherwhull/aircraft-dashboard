@@ -18,6 +18,8 @@ All PowerShell scripts have been moved here as they have been replaced with Pyth
 - `start-proxy-3004.ps1` - Tile proxy starter (replaced by `start_servers.py`)
 - `start_all_terminals.ps1` - Terminal launcher for all services
 - `test-all.ps1` - Test suite (replaced by `test_all.py`)
+ - `test-all.ps1` - Test suite (replaced by `test_all.py`)
+ - `test_all.py` is now stashed at `tools/stashed/test_all.py` (not run by default test runners)
 - `test-endpoints.ps1` - Endpoint testing (replaced by `test_endpoints.py`)
 - `trigger-pages-rebuild.ps1` - Pages rebuild trigger
 

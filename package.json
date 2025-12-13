@@ -20,6 +20,7 @@
     "restart:auto": "node tools/check_and_restart_server.js --auto-restart",
     "start:pm2": "npx pm2 start server.js --name aircraft-dashboard || npx pm2 start server.js --name aircraft-dashboard --update-env",
     "start:tracker": "python -X utf8 tools/aircraft-tracker.py",
+    "start:tracker:tsdb": "python -X utf8 tools/run_tracker_tsdb.py --disable-s3 --test-run",
     "start:all:tracker": "npx concurrently \"npm run start\" \"npm run geotiff\" \"npm run start:tracker\"",
     "restart:pm2": "npx pm2 restart aircraft-dashboard",
     "restart:headless": "python tools/manage-services.py restart --wait --timeout 30",

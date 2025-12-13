@@ -1,4 +1,213 @@
 // --- Reception Tab Loader ---
+
+// --- Day/Night helper functions (global) ---
+const _daynight_rad = Math.PI / 180;
+const _daynight_J2000 = 2451545;
+function _toJulian(date) { return (date.getTime() / 86400000) + 2440587.5; }
+function _fromJulian(j) { return new Date((j - 2440587.5) * 86400000); }
+function _solarMeanAnomaly(d) { return _daynight_rad * (357.5291 + 0.98560028 * d); }
+function _eclipticLongitude(M) {
+    const C = _daynight_rad * (1.9148 * Math.sin(M) + 0.0200 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M));
+    const P = _daynight_rad * 102.9372;
+    return M + C + P + Math.PI;
+}
+
+function getSunriseSunsetForDate(lat, lon, date) {
+    // Compute approximate sunrise/sunset (UTC ms) for the UTC calendar day containing `date`.
+    const midnightUtc = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    const jd = _toJulian(midnightUtc);
+    const d = jd - _daynight_J2000;
+    const M = _solarMeanAnomaly(d);
+    const L = _eclipticLongitude(M);
+    const dec = Math.asin(Math.sin(L) * Math.sin(_daynight_rad * 23.4397));
+    const Jtransit = _daynight_J2000 + d + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L) - (lon / 360);
+    const latRad = lat * _daynight_rad;
+    const cosw0 = (Math.sin(-0.83 * _daynight_rad) - Math.sin(latRad) * Math.sin(dec)) / (Math.cos(latRad) * Math.cos(dec));
+    if (cosw0 > 1) return { sunrise: null, sunset: null, alwaysNight: true, alwaysDay: false };
+    if (cosw0 < -1) return { sunrise: null, sunset: null, alwaysNight: false, alwaysDay: true };
+    const w0 = Math.acos(cosw0);
+    const Jrise = Jtransit - w0 / (2 * Math.PI);
+    const Jset = Jtransit + w0 / (2 * Math.PI);
+    return { sunrise: _fromJulian(Jrise).getTime(), sunset: _fromJulian(Jset).getTime(), alwaysNight: false, alwaysDay: false };
+}
+
+function getChartLatLon() {
+    try {
+        const el = document.getElementById('receiver-coords');
+        if (el && el.innerText) {
+            const m = el.innerText.match(/Lat:\s*([\-0-9.]+)[^0-9\-]+Lon:\s*([\-0-9.]+)/i);
+            if (m) return { lat: parseFloat(m[1]), lon: parseFloat(m[2]) };
+        }
+    } catch (e) {}
+    try {
+        if (typeof positionDataSources !== 'undefined' && positionDataSources.receiverLat && positionDataSources.receiverLon) {
+            return { lat: positionDataSources.receiverLat, lon: positionDataSources.receiverLon };
+        }
+    } catch (e) {}
+    return null;
+}
+
+function computeNightIntervals(startMs, endMs, lat, lon) {
+    const intervals = [];
+    const startDay = new Date(startMs);
+    startDay.setUTCHours(0, 0, 0, 0);
+    for (let d = new Date(startDay.getTime()); d.getTime() <= endMs; d.setUTCDate(d.getUTCDate() + 1)) {
+        const { sunrise, sunset, alwaysNight, alwaysDay } = getSunriseSunsetForDate(lat, lon, d);
+        const dayStart = d.getTime();
+        const dayEnd = dayStart + (24 * 60 * 60 * 1000) - 1;
+        if (alwaysNight) {
+            intervals.push({ start: Math.max(dayStart, startMs), end: Math.min(dayEnd, endMs) });
+        } else if (alwaysDay) {
+            // nothing
+        } else {
+            if (sunrise !== null) {
+                const s = Math.max(dayStart, startMs);
+                const e = Math.min(sunrise, endMs);
+                if (e > s) intervals.push({ start: s, end: e });
+            }
+            if (sunset !== null) {
+                const s = Math.max(sunset, startMs);
+                const e = Math.min(dayEnd, endMs);
+                if (e > s) intervals.push({ start: s, end: e });
+            }
+        }
+    }
+    return intervals;
+}
+
+// Compute sun altitude (degrees) at a given UTC ms for latitude/longitude
+function sunAltitudeAtMs(lat, lon, ms) {
+    try {
+        const date = new Date(ms);
+        const jd = _toJulian(date);
+        const d = jd - _daynight_J2000;
+        const M = _solarMeanAnomaly(d);
+        const L = _eclipticLongitude(M);
+        const dec = Math.asin(Math.sin(L) * Math.sin(_daynight_rad * 23.4397));
+        const Jtransit = _daynight_J2000 + d + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L) - (lon / 360);
+        const H = 2 * Math.PI * (jd - Jtransit);
+        const latRad = lat * _daynight_rad;
+        const altitude = Math.asin(Math.sin(latRad) * Math.sin(dec) + Math.cos(latRad) * Math.cos(dec) * Math.cos(H));
+        return altitude / _daynight_rad;
+    } catch (e) {
+        return null;
+    }
+}
+
+// Find time (ms) between leftMs and rightMs where sun altitude crosses targetAltDeg.
+// Returns null if no crossing found. Assumes altitude is monotonic between bounds (reasonable for small intervals).
+function findCrossingTimeForAltitude(lat, lon, targetAltDeg, leftMs, rightMs) {
+    const aLeft = sunAltitudeAtMs(lat, lon, leftMs);
+    const aRight = sunAltitudeAtMs(lat, lon, rightMs);
+    if (aLeft === null || aRight === null) return null;
+    // If both sides are on the same side of target, no crossing
+    if ((aLeft < targetAltDeg && aRight < targetAltDeg) || (aLeft > targetAltDeg && aRight > targetAltDeg)) return null;
+
+    let lo = leftMs, hi = rightMs;
+    for (let i = 0; i < 60 && (hi - lo) > 60000; i++) { // iterate until ~1 minute precision
+        const mid = Math.floor((lo + hi) / 2);
+        const aMid = sunAltitudeAtMs(lat, lon, mid);
+        if (aMid === null) break;
+        if ((aLeft <= targetAltDeg && aMid >= targetAltDeg) || (aLeft >= targetAltDeg && aMid <= targetAltDeg)) {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    return Math.floor((lo + hi) / 2);
+}
+
+function drawDayNightBackground(ctx, startMs, endMs, padding, chartW, chartH) {
+    const coords = getChartLatLon();
+    ctx.save();
+    // subtle day background
+    ctx.fillStyle = '#f2f2f2';
+    ctx.fillRect(padding.left, padding.top, chartW, chartH);
+    if (!coords) { ctx.restore(); return; }
+    // Draw night and twilight bands per-day using altitude-based twilight times
+    const total = endMs - startMs;
+    if (total <= 0) { ctx.restore(); return; }
+
+    const dayColor = '#f2f2f2';
+    const nightColor = '#000';
+    const twilightTargetDeg = -6; // civil twilight
+
+    // iterate through calendar days overlapping the requested range
+    const startDay = new Date(startMs);
+    startDay.setUTCHours(0, 0, 0, 0);
+    for (let d = new Date(startDay.getTime()); d.getTime() <= endMs; d.setUTCDate(d.getUTCDate() + 1)) {
+        const dayStart = d.getTime();
+        const dayEnd = dayStart + (24 * 60 * 60 * 1000) - 1;
+        const { sunrise, sunset, alwaysNight, alwaysDay } = getSunriseSunsetForDate(coords.lat, coords.lon, d);
+
+        const clampToRange = (s, e) => {
+            const s2 = Math.max(s, startMs);
+            const e2 = Math.min(e, endMs);
+            return (e2 > s2) ? { s: s2, e: e2 } : null;
+        };
+
+        if (alwaysNight) {
+            const band = clampToRange(dayStart, dayEnd);
+            if (band) {
+                const x1 = padding.left + ((band.s - startMs) / total) * chartW;
+                const x2 = padding.left + ((band.e - startMs) / total) * chartW;
+                ctx.fillStyle = nightColor;
+                ctx.fillRect(x1, padding.top, x2 - x1, chartH);
+            }
+            continue;
+        }
+        if (alwaysDay) continue;
+
+        // Dawn: find time when sun altitude crosses twilightTargetDeg before sunrise
+        if (sunrise) {
+            const dawnCross = findCrossingTimeForAltitude(coords.lat, coords.lon, twilightTargetDeg, Math.max(dayStart, sunrise - 12 * 60 * 60 * 1000), sunrise);
+            const dawnStart = dawnCross || Math.max(dayStart, sunrise - 30 * 60 * 1000);
+            const dawnEnd = sunrise;
+            const band = clampToRange(dawnStart, dawnEnd);
+            if (band) {
+                const x1 = padding.left + ((band.s - startMs) / total) * chartW;
+                const x2 = padding.left + ((band.e - startMs) / total) * chartW;
+                const g = ctx.createLinearGradient(x1, 0, x2, 0);
+                g.addColorStop(0, nightColor);
+                g.addColorStop(1, dayColor);
+                ctx.fillStyle = g;
+                ctx.fillRect(x1, padding.top, Math.max(1, x2 - x1), chartH);
+            }
+            const nightBefore = clampToRange(dayStart, dawnStart);
+            if (nightBefore) {
+                const x1 = padding.left + ((nightBefore.s - startMs) / total) * chartW;
+                const x2 = padding.left + ((nightBefore.e - startMs) / total) * chartW;
+                ctx.fillStyle = nightColor;
+                ctx.fillRect(x1, padding.top, x2 - x1, chartH);
+            }
+        }
+
+        // Dusk: find time when sun altitude crosses twilightTargetDeg after sunset
+        if (sunset) {
+            const duskCross = findCrossingTimeForAltitude(coords.lat, coords.lon, twilightTargetDeg, sunset, Math.min(dayEnd, sunset + 12 * 60 * 60 * 1000));
+            const duskEnd = duskCross || Math.min(dayEnd, sunset + 30 * 60 * 1000);
+            const duskStart = sunset;
+            const band = clampToRange(duskStart, duskEnd);
+            if (band) {
+                const x1 = padding.left + ((band.s - startMs) / total) * chartW;
+                const x2 = padding.left + ((band.e - startMs) / total) * chartW;
+                const g = ctx.createLinearGradient(x1, 0, x2, 0);
+                g.addColorStop(0, dayColor);
+                g.addColorStop(1, nightColor);
+                ctx.fillStyle = g;
+                ctx.fillRect(x1, padding.top, Math.max(1, x2 - x1), chartH);
+            }
+            const nightAfter = clampToRange(duskEnd, dayEnd);
+            if (nightAfter) {
+                const x1 = padding.left + ((nightAfter.s - startMs) / total) * chartW;
+                const x2 = padding.left + ((nightAfter.e - startMs) / total) * chartW;
+                ctx.fillStyle = nightColor;
+                ctx.fillRect(x1, padding.top, x2 - x1, chartH);
+            }
+        }
+    }
+    ctx.restore();
+}
 async function loadReceptionRange(hoursBack = null) {
     try {
     try { showSpinnerForTab('reception'); } catch (e) {}
@@ -90,7 +299,20 @@ async function loadReceptionRange(hoursBack = null) {
             receiverInfoDiv.innerHTML = `Lat: N/A, Lon: N/A`;
         }
         
-        summaryDiv.innerHTML = `<strong>Max Range:</strong> ${maxRange.toFixed(2)} nm | <strong>Positions:</strong> ${positionCount.toLocaleString()} | <strong>Sector/Altitude Cells:</strong> ${Object.keys(sectors).length}`;
+        try {
+            const summaryDiv = document.getElementById('reception-summary');
+            if (summaryDiv) {
+                try {
+                    const summaryHtml = `<strong>Max Range:</strong> ${maxRange.toFixed(2)} nm | <strong>Positions:</strong> ${positionCount.toLocaleString()} | <strong>Sector/Altitude Cells:</strong> ${Object.keys(sectors).length}`;
+                    summaryDiv.dataset._previousHtml = summaryHtml;
+                    if (isCustomRange && typeof startTime !== 'undefined' && typeof endTime !== 'undefined') {
+                        summaryDiv.dataset.filterCriteria = `Range: ${formatLocalDateTime(startTime)} → ${formatLocalDateTime(endTime)}`;
+                    } else {
+                        summaryDiv.dataset.filterCriteria = `Window: ${hours}h`;
+                    }
+                } catch (e) {}
+            }
+        } catch (e) {}
         try { setComputedRangeUI('reception', startTime, endTime, isCustomRange); } catch (e) {}
         try { hideSpinnerForTab('reception'); } catch (e) {}
         
@@ -566,6 +788,14 @@ function showTab(tabName, event) {
             const visibleTabs = ['airlines','positions','flights','squawk','heatmap','reception'];
             if (visibleTabs.includes(tabName)) globalControl.style.display = 'block'; else globalControl.style.display = 'none';
         }
+        // Hide the top `time-window` select when on Flights tab (Flights uses its own inputs)
+        try {
+            const timeSelect = document.getElementById('time-window');
+            if (timeSelect) {
+                // Hide the top select on Flights and Positions (they have their own controls)
+                if (tabName === 'flights' || tabName === 'positions') timeSelect.style.display = 'none'; else timeSelect.style.display = '';
+            }
+        } catch (e) {}
     } catch (e) {}
 }
 
@@ -577,8 +807,8 @@ function showTab(tabName, event) {
 
 async function loadHistoricalStats() {
     try {
-        const startTime = document.getElementById('historical-start-time').value;
-        const endTime = document.getElementById('historical-end-time').value;
+        const startTime = document.getElementById('historical-start-time')?.value || '';
+        const endTime = document.getElementById('historical-end-time')?.value || '';
 
         let url = '/api/historical-stats';
         if (startTime && endTime) {
@@ -1076,7 +1306,39 @@ async function loadAirlineStats(hoursBack = null) {
             
             windowVal = '1h';
         }
-        
+        // Update Flights title with current filter criteria (window or custom range)
+        try {
+            const titleEl = document.getElementById('flights-main-title');
+            if (titleEl) {
+                // remove any existing filter criteria span
+                try { Array.from(titleEl.querySelectorAll('.filter-criteria')).forEach(n => n.remove()); } catch (e) {}
+                const fc = document.createElement('span');
+                fc.className = 'filter-criteria';
+                fc.style.color = '#bdbdbd';
+                fc.style.fontWeight = 'normal';
+                fc.style.fontSize = '0.9em';
+                fc.style.marginLeft = '8px';
+                if (isCustomRange && typeof startTime !== 'undefined' && typeof endTime !== 'undefined') {
+                    fc.textContent = `- Range: ${formatLocalDateTime(startTime)} → ${formatLocalDateTime(endTime)}`;
+                } else {
+                    fc.textContent = `- Window: ${windowVal}`;
+                }
+                titleEl.appendChild(fc);
+            }
+        } catch (e) {}
+
+        // Record filter criteria for UI summary (so hideSpinnerForTab can show it)
+        try {
+            const summaryEl = document.getElementById('airline-stats-summary-last-hour');
+            if (summaryEl) {
+                if (isCustomRange && typeof startTime !== 'undefined' && typeof endTime !== 'undefined') {
+                    summaryEl.dataset.filterCriteria = `Range: ${formatLocalDateTime(startTime)} → ${formatLocalDateTime(endTime)}`;
+                } else {
+                    summaryEl.dataset.filterCriteria = `Window: ${windowVal}`;
+                }
+            }
+        } catch (e) {}
+
         const response = await fetch(`/api/airline-stats?window=${windowVal}`);
         const data = await response.json();
         console.log('Received airline stats data:', JSON.stringify(data, null, 2));
@@ -1214,6 +1476,15 @@ async function loadAirlineStats(hoursBack = null) {
         restoreTableSortState(table);
         try { setComputedRangeUI('airlines', startTime, endTime, isCustomRange); } catch (e) {}
         try { hideSpinnerForTab('airlines'); } catch (e) {}
+
+        // If an airline drilldown is currently open for a specific airline, refresh it
+        try {
+            const drill = window._currentAirlineDrill;
+            if (drill && document.getElementById('airline-flights-drilldown') && document.getElementById('airline-flights-drilldown').style.display !== 'none') {
+                // Re-run the drill loader with the stored params
+                try { loadAirlineFlights(drill.code, drill.name, drill.window); } catch (e) {}
+            }
+        } catch (e) {}
     } catch (error) {
         console.error('Error loading or processing airline stats:', error);
         try { hideSpinnerForTab('airlines', `<span style="color:#f44336;">Error loading airlines</span>`); } catch (e) {}
@@ -1224,6 +1495,8 @@ async function loadAirlineFlights(airlineCode, airlineName, windowVal) {
     try {
         try { window._lastLoadAirlineFlights = Date.now(); } catch (e) {}
         try { showSpinnerForTab('airline-flights', 'Loading flights…'); } catch (e) {}
+        // Remember current drilldown state so parent reloads can refresh it
+        try { window._currentAirlineDrill = { code: airlineCode, name: airlineName, window: windowVal }; } catch (e) {}
         const drilldownDiv = document.getElementById('airline-flights-drilldown');
         const titleElem = document.getElementById('airline-flights-title');
         const summaryElem = document.getElementById('airline-flights-summary');
@@ -1246,7 +1519,7 @@ async function loadAirlineFlights(airlineCode, airlineName, windowVal) {
         }
         
         titleElem.textContent = `Flights for ${airlineCode} - ${airlineName} (${timeWindowText})`;
-        summaryElem.innerHTML = '<span style="color: #888;">Loading...</span>';
+        // showSpinnerForTab has already placed a spinner into this element; avoid overwriting it
         
         // Save current sort state before clearing table
         const table = tableBody.closest('table');
@@ -1283,11 +1556,12 @@ async function loadAirlineFlights(airlineCode, airlineName, windowVal) {
         
         const allFlights = [...activeFlights, ...completedFlights];
         
-        // Update summary
-        summaryElem.innerHTML = `
-            <strong>Total Flights:</strong> ${allFlights.length} 
-            (${activeFlights.length} active, ${completedFlights.length} no longer seen)
-        `;
+        // Update summary data: store previous HTML and filter criteria so hideSpinnerForTab can render them
+        try {
+            const summaryHtml = `<strong>Total Flights:</strong> ${allFlights.length}`;
+            summaryElem.dataset._previousHtml = summaryHtml;
+            summaryElem.dataset.filterCriteria = `Active: ${activeFlights.length} • No Longer Seen: ${completedFlights.length}`;
+        } catch (e) {}
         
         // Sort by start time (most recent first)
         allFlights.sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
@@ -1388,6 +1662,7 @@ async function loadAirlineFlights(airlineCode, airlineName, windowVal) {
 function closeAirlineFlightsDrilldown() {
     const drilldownDiv = document.getElementById('airline-flights-drilldown');
     drilldownDiv.style.display = 'none';
+    try { delete window._currentAirlineDrill; } catch (e) {}
 }
 
 // Global storage for position data sources
@@ -1595,6 +1870,22 @@ async function loadUnifiedPositionStats(hoursBack = null) {
         try { setActivePositionButton(hours); } catch (e) {}
         try { updatePositionsTimescaleIndicator(); } catch (e) {}
         try { setComputedRangeUI('positions', startTime, endTime, isCustomRange); } catch (e) {}
+        try {
+            // Record summary counts so hideSpinnerForTab can render them next to Last lookup
+            const summaryEl = document.getElementById('positions-timescale-indicator');
+            if (summaryEl) {
+                try {
+                    const summaryHtml = `<strong>Memory:</strong> ${memoryPositions.toLocaleString()} pos • ${memoryAircraft.size.toLocaleString()} AC`;
+                    summaryEl.dataset._previousHtml = summaryHtml;
+                    // Store filter criteria (range or window)
+                    if (isCustomRange && typeof startTime !== 'undefined' && typeof endTime !== 'undefined') {
+                        summaryEl.dataset.filterCriteria = `Range: ${formatLocalDateTime(startTime)} → ${formatLocalDateTime(endTime)}`;
+                    } else {
+                        summaryEl.dataset.filterCriteria = `Window: ${hours}h`;
+                    }
+                } catch (e) {}
+            }
+        } catch (e) {}
         try { hideSpinnerForTab('positions'); } catch (e) {}
         
         } catch (error) {
@@ -1749,14 +2040,21 @@ function clearActivePositionButtons() {
 // Apply or remove the green border around global start/end input to indicate custom range is active/returned
 function setCustomRangeUI(active) {
     try {
-        const start = document.getElementById('positions-start-time');
-        const end = document.getElementById('positions-end-time');
-        if (start) {
-            if (active) start.classList.add('custom-range-active'); else start.classList.remove('custom-range-active');
-        }
-        if (end) {
-            if (active) end.classList.add('custom-range-active'); else end.classList.remove('custom-range-active');
-        }
+        // Apply the custom-range-active class to any known global start/end inputs
+        const ids = [
+            'positions-start-time','positions-end-time',
+            'flights-start-time','flights-end-time','flights-gap',
+            'airline-start-time','airline-end-time',
+            'squawk-start-time','squawk-end-time',
+            'reception-start-time','reception-end-time'
+        ];
+        ids.forEach(id => {
+            try {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (active) el.classList.add('custom-range-active'); else el.classList.remove('custom-range-active');
+            } catch (e) {}
+        });
     } catch (e) {}
 }
 
@@ -1843,15 +2141,41 @@ function hideSpinnerForTab(tabName, replacementText = null) {
         // Set last lookup timestamp
         const ts = Date.now();
         window._lastLookupTimes[tabName] = ts;
-        const lastText = `<span class=\"computed-range\">Last lookup: ${formatTimeForUI(ts)}</span>`;
+        // Build DOM nodes to avoid duplicate text nodes or repeated HTML
+        const computedText = `Last lookup: ${formatTimeForUI(ts)}`;
+
+        // Clear existing content entirely to avoid duplicates
+        while (el.firstChild) el.removeChild(el.firstChild);
+
+        // Insert replacement or previous HTML if provided
         if (replacementText !== null) {
-            el.innerHTML = `${replacementText} ${lastText}`;
+            const rep = document.createElement('span');
+            rep.className = 'loading-text-replacement';
+            rep.innerHTML = replacementText;
+            el.appendChild(rep);
         } else if (el.dataset._previousHtml) {
-            el.innerHTML = `${el.dataset._previousHtml} ${lastText}`;
+            const prev = document.createElement('span');
+            prev.className = 'previous-html';
+            prev.innerHTML = el.dataset._previousHtml;
+            el.appendChild(prev);
             delete el.dataset._previousHtml;
-        } else {
-            el.innerHTML = lastText;
         }
+
+        // Add stored filter criteria if available
+        if (el.dataset && el.dataset.filterCriteria) {
+            if (el.childNodes.length) el.appendChild(document.createTextNode(' '));
+            const f = document.createElement('span');
+            f.className = 'filter-criteria';
+            f.textContent = el.dataset.filterCriteria;
+            el.appendChild(f);
+        }
+
+        // Finally add the computed last lookup span
+        if (el.childNodes.length) el.appendChild(document.createTextNode(' '));
+        const last = document.createElement('span');
+        last.className = 'computed-range';
+        last.textContent = computedText;
+        el.appendChild(last);
     } catch (e) { /* ignore */ }
 }
 
@@ -1909,14 +2233,57 @@ function drawPositionsTimeSeriesGraph(memoryData) {
         return;
     }
     
-    // Filter data based on current time range if available
+    // Determine time extents for this chart. Preference order:
+    // 1) Per-tab inputs `positions-start-time` / `positions-end-time`
+    // 2) `positionDataSources.startTime` / `positionDataSources.endTime` set by loaders
+    // 3) Global `time-window` select mapped to hours back from now
+    let startMS = null;
+    let endMS = null;
+    try {
+        const startVal = document.getElementById('positions-start-time')?.value;
+        const endVal = document.getElementById('positions-end-time')?.value;
+        if (startVal && endVal) {
+            startMS = new Date(startVal).getTime();
+            endMS = new Date(endVal).getTime();
+        }
+    } catch (e) {}
+
+    if (!startMS || !endMS) {
+        if (positionDataSources.startTime && positionDataSources.endTime) {
+            startMS = positionDataSources.startTime;
+            endMS = positionDataSources.endTime;
+        }
+    }
+
+    if (!startMS || !endMS) {
+        try {
+            const timeWindowSelect = document.getElementById('time-window') || document.getElementById('heatmap-window');
+            if (timeWindowSelect && timeWindowSelect.value) {
+                const now = Date.now();
+                const map = {
+                    '1h': 1, '4h': 4, '6h': 6, '8h': 8, '12h': 12, '24h': 24,
+                    '1w': 168, '4w': 672
+                };
+                const hours = map[timeWindowSelect.value] ?? null;
+                if (hours) {
+                    endMS = now;
+                    startMS = now - (hours * 60 * 60 * 1000);
+                }
+            }
+        } catch (e) {}
+    }
+
+    // Apply time filtering if we have valid extents
     let filteredData = memoryData;
-    if (positionDataSources.startTime && positionDataSources.endTime) {
+    if (startMS && endMS) {
         filteredData = memoryData.filter(bucket => {
             const timestamp = bucket.timestamp;
-            return timestamp >= positionDataSources.startTime && timestamp <= positionDataSources.endTime;
+            return timestamp >= startMS && timestamp <= endMS;
         });
     }
+
+    
+
     
     // Check which metrics to display
     const showPositions = document.getElementById('graph-positions')?.checked ?? true;
@@ -1927,6 +2294,8 @@ function drawPositionsTimeSeriesGraph(memoryData) {
     const padding = { top: 40, right: 150, bottom: 60, left: 80 };
     const chartWidth = canvas.width - padding.left - padding.right;
     const chartHeight = canvas.height - padding.top - padding.bottom;
+    // Draw day/night background bands (uses receiver coordinates if available)
+    try { if (startMS && endMS && chartWidth > 0 && chartHeight > 0) drawDayNightBackground(ctx, startMS, endMS, padding, chartWidth, chartHeight); } catch (e) {}
     
     // Extract data points from filtered data
     const dataPoints = filteredData.map(bucket => ({
@@ -1988,8 +2357,8 @@ function drawPositionsTimeSeriesGraph(memoryData) {
         const idx = Math.floor(i * (dataPoints.length - 1) / (numLabels - 1));
         const point = dataPoints[idx];
         const x = padding.left + (idx / (dataPoints.length - 1)) * chartWidth;
-        const time = new Date(point.timestamp);
-        const label = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const d = new Date(point.timestamp);
+        const label = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
         ctx.fillText(label, x, canvas.height - padding.bottom + 20);
     }
     
@@ -2073,8 +2442,8 @@ function drawPositionsTimeSeriesGraph(memoryData) {
     ctx.fillStyle = '#e0e0e0';
     ctx.font = 'bold 16px sans-serif';
     ctx.textAlign = 'center';
-    const titleText = positionDataSources.startTime && positionDataSources.endTime 
-        ? `Position Statistics (${new Date(positionDataSources.startTime).toLocaleString()} - ${new Date(positionDataSources.endTime).toLocaleString()})`
+    const titleText = (startMS && endMS)
+        ? `Position Statistics (${new Date(startMS).toLocaleString()} - ${new Date(endMS).toLocaleString()})`
         : 'Position Statistics Over Time';
     ctx.fillText(titleText, canvas.width / 2, 25);
 }
@@ -2105,8 +2474,8 @@ function updatePositionsTimescaleIndicator() {
 async function loadPositionStatsLive() {
     try {
         try { showSpinnerForTab('positions', 'Loading live stats…'); } catch (e) {}
-        const minutes = parseInt(document.getElementById('positions-live-minutes').value || '10', 10);
-        const resolution = parseInt(document.getElementById('positions-live-resolution').value || '1', 10);
+        const minutes = parseInt((document.getElementById('positions-live-minutes')?.value) || '10', 10);
+        const resolution = parseInt((document.getElementById('positions-live-resolution')?.value) || '1', 10);
         const resp = await fetch(`/api/position-timeseries-live?minutes=${minutes}&resolution=${resolution}`);
         const timeseries = await resp.json();
 
@@ -2120,6 +2489,35 @@ async function loadPositionStatsLive() {
             ctx.fillText('No live data available.', 10, 20);
             try { hideSpinnerForTab('positions', 'No live data available'); } catch (e) {}
             return;
+        }
+
+        // Determine time extents for the live chart (prefer per-tab inputs)
+        let liveStart = null, liveEnd = null;
+        try {
+            const s = document.getElementById('positions-start-time')?.value;
+            const e = document.getElementById('positions-end-time')?.value;
+            if (s && e) { liveStart = new Date(s).getTime(); liveEnd = new Date(e).getTime(); }
+        } catch (err) {}
+
+        if (!liveStart || !liveEnd) {
+            if (positionDataSources.startTime && positionDataSources.endTime) {
+                liveStart = positionDataSources.startTime;
+                liveEnd = positionDataSources.endTime;
+            }
+        }
+
+        if (!liveStart || !liveEnd) {
+            // fall back to minutes window
+            const now = Date.now();
+            liveEnd = now;
+            liveStart = now - (minutes * 60 * 1000);
+        }
+
+        // Filter timeseries to requested extents
+        let filteredTimeseries = timeseries;
+        if (liveStart && liveEnd) {
+            filteredTimeseries = timeseries.filter(pt => pt.timestamp >= liveStart && pt.timestamp <= liveEnd);
+            if (!filteredTimeseries.length) filteredTimeseries = timeseries; // fall back if filter emptied
         }
 
         const selectedMetrics = Array.from(document.querySelectorAll('#position-chart-live-controls input:checked')).map(cb => cb.value);
@@ -2163,6 +2561,11 @@ async function loadPositionStatsLive() {
         const padLeft = 40, padRight = 40, padTop = 10, padBottom = 24;
         const w = canvas.width - padLeft - padRight;
         const h = canvas.height - padTop - padBottom;
+        // Draw day/night background for live chart if coordinates available
+        try {
+            const padding = { left: padLeft, top: padTop, right: padRight, bottom: padBottom };
+            if (liveStart && liveEnd && w > 0 && h > 0) drawDayNightBackground(ctx, liveStart, liveEnd, padding, w, h);
+        } catch (e) {}
 
         ctx.strokeStyle = '#ccc';
         ctx.fillStyle = '#444';
@@ -2198,14 +2601,14 @@ async function loadPositionStatsLive() {
         ctx.fillStyle = '#999';
         ctx.font = '10px sans-serif';
         ctx.textAlign = 'center';
-        const numLabels = Math.min(6, timeseries.length);
-        const divisor = Math.max(1, timeseries.length - 1);
+        const numLabels = Math.min(6, filteredTimeseries.length);
+        const divisor = Math.max(1, filteredTimeseries.length - 1);
         for (let i = 0; i < numLabels; i++) {
-            const idx = Math.floor((timeseries.length - 1) * i / Math.max(1, numLabels - 1));
-            const pt = timeseries[idx];
+            const idx = Math.floor((filteredTimeseries.length - 1) * i / Math.max(1, numLabels - 1));
+            const pt = filteredTimeseries[idx];
             const x = padLeft + (w * idx / divisor);
-            const time = new Date(pt.timestamp);
-            const timeStr = time.getHours().toString().padStart(2, '0') + ':' + time.getMinutes().toString().padStart(2, '0');
+            const d = new Date(pt.timestamp);
+            const timeStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
             ctx.fillText(timeStr, x, padTop + h + 14);
         }
         ctx.textAlign = 'left';
@@ -2214,7 +2617,7 @@ async function loadPositionStatsLive() {
             ctx.strokeStyle = colors[metric];
             ctx.lineWidth = 2;
             ctx.beginPath();
-            timeseries.forEach((pt, idx) => {
+            filteredTimeseries.forEach((pt, idx) => {
                 const x = padLeft + (w * idx / divisor);
                 const y = padTop + h - (pt[metric] / maxVPrimary) * h;
                 if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
@@ -2223,7 +2626,7 @@ async function loadPositionStatsLive() {
             
             // Draw dots for each point
             ctx.fillStyle = colors[metric];
-            timeseries.forEach((pt, idx) => {
+            filteredTimeseries.forEach((pt, idx) => {
                 const x = padLeft + (w * idx / divisor);
                 const y = padTop + h - (pt[metric] / maxVPrimary) * h;
                 ctx.beginPath();
@@ -2263,6 +2666,30 @@ async function loadPositionStatsLive() {
             legendX += ctx.measureText(labels[metric]).width + 30;
         });
 
+            // Store a compact summary (positions & aircraft counts) for the positions UI
+            try {
+                const summaryEl = document.getElementById('positions-timescale-indicator');
+                if (summaryEl) {
+                    try {
+                        let totalPositions = 0;
+                        const acSet = new Set();
+                        filteredTimeseries.forEach(pt => {
+                            totalPositions += pt.positionCount || 0;
+                            if (Array.isArray(pt.aircraft)) pt.aircraft.forEach(a => acSet.add(a));
+                        });
+                        const summaryHtml = `<strong>Positions:</strong> ${totalPositions.toLocaleString()} • <strong>Aircraft:</strong> ${acSet.size.toLocaleString()}`;
+                        summaryEl.dataset._previousHtml = summaryHtml;
+                        if (liveStart && liveEnd) {
+                            const s = new Date(liveStart).toLocaleString();
+                            const e = new Date(liveEnd).toLocaleString();
+                            summaryEl.dataset.filterCriteria = `Range: ${s} → ${e}`;
+                        } else {
+                            summaryEl.dataset.filterCriteria = `Window: ${minutes}m`;
+                        }
+                    } catch (e) {}
+                }
+            } catch (e) {}
+
     } catch (error) {
         console.error('Error loading live position stats:', error);
     }
@@ -2299,7 +2726,20 @@ async function loadCachePositionStats() {
             Last Refresh: ${data.positionCache?.lastRefresh || 'N/A'} | 
             Cache Size: ${data.positionCache?.cacheMemoryMb || 0} MB
         `;
-        document.getElementById('cache-position-stats-summary').innerHTML = summaryHtml;
+        try {
+            // Write to the detailed summary area
+            const detailed = document.getElementById('cache-position-stats-summary');
+            if (detailed) detailed.innerHTML = summaryHtml;
+            // Also store compact summary for the top-of-tab summary area
+            const summaryEl = document.getElementById('cache-summary');
+            if (summaryEl) {
+                try {
+                    const compact = `<strong>Positions:</strong> ${totalCachedPositions.toLocaleString()} • <strong>Aircraft:</strong> ${uniqueAircraft.toLocaleString()}`;
+                    summaryEl.dataset._previousHtml = compact;
+                    summaryEl.dataset.filterCriteria = `Last Refresh: ${data.positionCache?.lastRefresh || 'N/A'}`;
+                } catch (e) {}
+            }
+        } catch (e) {}
         
         // Draw a simple bar chart showing cache composition
         const canvas = document.getElementById('cache-position-stats-canvas');
@@ -2366,7 +2806,7 @@ async function loadPositionStats() {
         const startElem = document.getElementById('positions-start-time');
         const endElem = document.getElementById('positions-end-time');
         
-        let hours = parseInt(document.getElementById('positions-hours').value || '24', 10);
+        let hours = parseInt((document.getElementById('positions-hours')?.value) || '24', 10);
         let queryUrl = `/api/historical-stats?hours=${hours}`;
         let usingTimeRange = false;
         
@@ -2588,6 +3028,34 @@ async function loadPositionStats() {
             ctx.fillText(labels[metric], legendX + 15, padTop + h + 18);
             legendX += ctx.measureText(labels[metric]).width + 30;
         });
+
+        // Build and store a compact summary for the positions summary area
+        try {
+            const summaryEl = document.getElementById('positions-timescale-indicator');
+            if (summaryEl) {
+                try {
+                    // Compute aggregated counts from timeseries
+                    let totalPositions = 0;
+                    const acSet = new Set();
+                    const flSet = new Set();
+                    const alSet = new Set();
+                    timeseries.forEach(pt => {
+                        totalPositions += pt.positions || 0;
+                        if (Array.isArray(pt.aircraft)) pt.aircraft.forEach(a => acSet.add(a));
+                        if (Array.isArray(pt.flights)) pt.flights.forEach(f => flSet.add(f));
+                        if (Array.isArray(pt.airlines)) pt.airlines.forEach(a => alSet.add(a));
+                    });
+                    const summaryHtml = `<strong>Positions:</strong> ${totalPositions.toLocaleString()} • <strong>Aircraft:</strong> ${acSet.size.toLocaleString()}`;
+                    summaryEl.dataset._previousHtml = summaryHtml;
+                    if (usingTimeRange && startElem && startElem.value && endElem && endElem.value) {
+                        summaryEl.dataset.filterCriteria = `Range: ${new Date(startElem.value).toLocaleString()} → ${new Date(endElem.value).toLocaleString()}`;
+                    } else {
+                        summaryEl.dataset.filterCriteria = `Window: ${hours}h`;
+                    }
+                } catch (e) {}
+            }
+        } catch (e) {}
+        try { hideSpinnerForTab('positions'); } catch (e) {}
 
         try { hideSpinnerForTab('positions'); } catch (e) {}
     } catch (error) {
@@ -2916,13 +3384,23 @@ async function loadFlights(hoursBack = null) {
         const activeCount = (data.active || []).length;
         const totalCount = allUnique.length;
         
-        // Update summary
-        const summaryDiv = document.getElementById('flights-summary');
-        if (totalCount > 0) {
-            summaryDiv.innerHTML = `Total Flights: <strong>${totalCount}</strong> | Active: <strong>${activeCount}</strong> | No Longer Seen: <strong>${completedCount}</strong>`;
-        } else {
-            summaryDiv.innerHTML = 'No flights found';
-        }
+        // Update summary: store as dataset values so hideSpinnerForTab can render counts + last lookup
+        try {
+            const summaryDiv = document.getElementById('flights-summary');
+            if (summaryDiv) {
+                try {
+                    const summaryHtml = totalCount > 0
+                        ? `Total Flights: <strong>${totalCount}</strong> | Active: <strong>${activeCount}</strong> | No Longer Seen: <strong>${completedCount}</strong>`
+                        : 'No flights found';
+                    summaryDiv.dataset._previousHtml = summaryHtml;
+                    if (isCustomRange && typeof startTime !== 'undefined' && typeof endTime !== 'undefined') {
+                        summaryDiv.dataset.filterCriteria = `Range: ${formatLocalDateTime(startTime)} → ${formatLocalDateTime(endTime)}`;
+                    } else {
+                        summaryDiv.dataset.filterCriteria = `Window: ${windowVal}`;
+                    }
+                } catch (e) {}
+            }
+        } catch (e) {}
         
             if (!data || (!data.flights && !data.active)) {
             tableBody.innerHTML = '<tr><td colspan="21">No flights found</td></tr>';
@@ -2994,8 +3472,9 @@ async function loadFlights(hoursBack = null) {
             const rowKey = `${(fl.icao||fl.hex||'').toLowerCase()}|${(fl.callsign||'').toUpperCase()}|${fl.start_time||''}|${fl.end_time||''}|${(fl.registration||'').toUpperCase()}`;
             let row = existingFlightRows.get(rowKey);
             if (row) {
-                // We will update the existing row's cells in place; avoid re-creating nodes when possible
+                // Reuse row element, but clear its contents to avoid appending duplicate cells
                 existingFlightRows.delete(rowKey);
+                try { while (row.firstChild) row.removeChild(row.firstChild); } catch (e) { row.innerHTML = ''; }
             } else {
                 row = document.createElement('tr');
             }
@@ -3359,9 +3838,24 @@ document.addEventListener('DOMContentLoaded', () => {
             const onCustomRangeChanged = () => {
                 try { clearActivePositionButtons(); } catch (e) {}
                 try { setCustomRangeUI(false); } catch (e) {}
+
+                // Debounce refresh for a short period to avoid flooding loaders
+                try { if (window._airlinesRefreshTimer) clearTimeout(window._airlinesRefreshTimer); } catch (e) {}
+                window._airlinesRefreshTimer = setTimeout(() => {
+                    try {
+                        const activeTabElem = document.querySelector('.tab-content.active');
+                        const tabName = activeTabElem && activeTabElem.id ? activeTabElem.id.replace(/-tab$/, '') : null;
+                        if (tabName === 'airlines') {
+                            try { loadAirlineStats(); } catch (e) {}
+                        }
+                    } catch (e) {}
+                }, 250);
             };
             positionsStart.addEventListener('input', onCustomRangeChanged);
             positionsEnd.addEventListener('input', onCustomRangeChanged);
+            // Also listen for change event (when user finishes editing)
+            positionsStart.addEventListener('change', onCustomRangeChanged);
+            positionsEnd.addEventListener('change', onCustomRangeChanged);
         }
     } catch (e) {}
 
@@ -3379,10 +3873,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     } catch (e) {}
 
+    // Flights 'gap minutes' input should trigger a reload of the flights table when changed
+    try {
+        const flightsGap = document.getElementById('flights-gap');
+        if (flightsGap) {
+            const onGapChanged = () => {
+                try { if (window._flightsGapTimer) clearTimeout(window._flightsGapTimer); } catch (e) {}
+                window._flightsGapTimer = setTimeout(() => {
+                    try { const activeTabElem = document.querySelector('.tab-content.active');
+                          const tabName = activeTabElem && activeTabElem.id ? activeTabElem.id.replace(/-tab$/,'') : null;
+                          // Only refresh if user is on flights tab; otherwise just leave value stored
+                          if (tabName === 'flights') {
+                              try { loadFlights(); } catch (e) {}
+                          }
+                    } catch (e) {}
+                }, 250);
+            };
+            flightsGap.addEventListener('input', onGapChanged);
+            flightsGap.addEventListener('change', onGapChanged);
+        }
+    } catch (e) {}
+
     // Enhance quick buttons with keyboard support and accessible attributes
     try {
         const btns = document.querySelectorAll('.positions-window-btn');
-        if (btns && btns.length) {
+            if (btns && btns.length) {
             btns.forEach(b => {
                 // Add keyboard activation
                 b.addEventListener('keydown', (ev) => {
@@ -3408,6 +3923,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         try { handleGlobalTimeSelection(hoursVal); } catch (e) {}
                     } catch (e) {}
                 });
+                // Mark button as having JS attachment so auto-hide logic can reveal it
+                try { b.dataset.attached = '1'; } catch (e) {}
             });
         }
     } catch (e) {}

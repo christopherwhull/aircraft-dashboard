@@ -8,6 +8,7 @@ Python script that monitors PiAware aircraft data and uploads to S3/MinIO for th
 - Minute-by-minute S3 uploads with hourly rollup files
 - Reception range analysis with bearing/altitude tracking
 - KML file generation for Google Earth visualization
+- **TSDB Integration**: Optional time-series database writes to InfluxDB 3 for historical position data
 - **S3 Database Enrichment**: Comprehensive aircraft type and registration lookup from S3-stored databases (236K+ aircraft, 5.7K+ airlines)
 - **Multi-Source Enrichment Pipeline**: Prioritized enrichment from S3 databases → ICAO cache → PiAware API → local fallbacks
 - Aircraft type database integration
@@ -19,6 +20,7 @@ Python script that monitors PiAware aircraft data and uploads to S3/MinIO for th
 - Python 3.8+
 - PiAware dump1090 running (default: `192.168.0.178:8080`)
 - MinIO/S3 server (default: `localhost:9000`)
+- Optional: InfluxDB 3 server for TSDB integration (default: `http://127.0.0.1:8181`)
 - Required Python packages: `boto3`, `requests`
 
 ## Installation
@@ -54,9 +56,14 @@ Basic usage with defaults from `config.json`:
 python aircraft-tracker.py
 ```
 
+Enable TSDB writes to InfluxDB 3:
+```bash
+python aircraft-tracker.py --enable-tsdb
+```
+
 Specify custom PiAware server:
 ```bash
-python aircraft-tracker.py 192.168.1.100:8080
+python aircraft-tracker.py --piaware-url http://192.168.1.100:8080
 ```
 
 Override S3 credentials:
@@ -69,6 +76,11 @@ Read-only mode (no writes):
 python aircraft-tracker.py --read-only
 ```
 
+Test run (2 minutes or 100 updates):
+```bash
+python aircraft-tracker.py --enable-tsdb --test-run
+```
+
 ## Configuration
 
 The script reads S3 credentials from `config.json` by default, which can be overridden by:
@@ -77,6 +89,7 @@ The script reads S3 credentials from `config.json` by default, which can be over
 
 ### Command-Line Options
 
+- `--piaware-url URL` - PiAware server URL (default: http://localhost:8080)
 - `--s3-endpoint URL` - S3/MinIO endpoint (default from config.json)
 - `--s3-access-key KEY` - S3 access key (default from config.json)
 - `--s3-secret-key SECRET` - S3 secret key (default from config.json)
@@ -85,6 +98,9 @@ The script reads S3 credentials from `config.json` by default, which can be over
 - `--s3-reception-bucket NAME` - Reception data bucket (default: piaware-reception-data)
 - `--heatmap-cell-size NM` - Grid cell size in nautical miles (default: 5)
 - `--s3-history-hours HOURS` - Hours of history to scan on startup (default: 24)
+- `--enable-tsdb` - Enable TSDB writes to InfluxDB 3
+- `--tsdb-url URL` - TSDB server URL (default: http://127.0.0.1:8181)
+- `--tsdb3-token TOKEN` - TSDB authentication token
 - `--read-only` - Disable all file writes
 - `--disable-s3` - Disable S3 uploads
 - `--test-run` - Run for a few iterations and exit
@@ -118,6 +134,100 @@ piaware-reception-data/
 icao-hex-cache/
   └── aircraft_type_database.json       # Aircraft type mappings
 ```
+
+## TSDB Integration
+
+The tracker can optionally write aircraft position data to InfluxDB 3 for time-series analysis and historical queries.
+
+### TSDB Setup
+
+1. **Install InfluxDB 3**:
+   - Download from https://www.influxdata.com/products/influxdb/
+   - Windows: Extract and run `influxdb3.exe serve`
+   - Linux: Follow installation instructions
+
+2. **Create Database**:
+   ```bash
+   influxdb3 create database airsquawk --node-id local
+   ```
+
+3. **Configure Authentication**:
+
+   #### Admin Token Generation
+   Generate an admin token for full database access:
+   ```bash
+   # Windows
+   C:\influxdb3-core-3.7.0-windows_amd64\influxdb3.exe admin create-token --name "airsquawk-admin"
+
+   # Linux/Mac
+   influxdb3 admin create-token --name "airsquawk-admin"
+   ```
+   This will output a token like: `apiv3_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+
+   #### Token Update to JSON
+   Add the generated token to your `config.json`:
+   ```json
+   {
+     "tsdb": {
+       "token": "apiv3_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+     }
+   }
+   ```
+
+   #### Starting TSDB with Authentication
+   Start InfluxDB 3 with authentication enabled:
+   ```bash
+   # Windows
+   C:\influxdb3-core-3.7.0-windows_amd64\influxdb3.exe serve --auth-token "your_admin_token_here"
+
+   # Linux/Mac
+   influxdb3 serve --auth-token "your_admin_token_here"
+   ```
+
+   #### Use of Normal (Write) Token
+   For production, create a least-privilege write token:
+   ```bash
+   # Create write-only token for aircraft_positions_new table
+   influxdb3 admin create-token --name "airsquawk-write" --write-table "aircraft_positions_new"
+   ```
+   Use this token in `config.json` for the tracker - it can only write data, not read or delete.
+
+### TSDB Data Flow
+
+When `--enable-tsdb` is specified:
+1. **Position Collection** - Captures lat/lon/altitude for each aircraft
+2. **Line Protocol Formatting** - Converts to InfluxDB line protocol format
+3. **Batch Writes** - Sends data via REST API every poll cycle
+4. **Authentication** - Uses Bearer token for secure writes
+
+### TSDB Schema
+
+Data is stored in the `aircraft_positions_new` measurement with:
+- **Tags**: `icao` (aircraft ID), `flight` (callsign)
+- **Fields**: `lat`, `lon`, `altitude`, `speed`, `heading`
+- **Timestamp**: Nanosecond precision from ADS-B data
+
+### Querying TSDB Data
+
+Use the InfluxDB CLI to query historical data (requires admin token for read access):
+
+```bash
+# Total position records
+influxdb3 query --database airsquawk --token YOUR_ADMIN_TOKEN "SELECT count(*) FROM aircraft_positions_new"
+
+# Unique aircraft
+influxdb3 query --database airsquawk --token YOUR_ADMIN_TOKEN "SELECT count(distinct icao) FROM aircraft_positions_new"
+
+# Recent positions for specific aircraft
+influxdb3 query --database airsquawk --token YOUR_ADMIN_TOKEN "SELECT * FROM aircraft_positions_new WHERE icao = 'ABC123' ORDER BY time DESC LIMIT 10"
+```
+
+### TSDB Benefits
+
+- **Historical Analysis**: Query position history over time
+- **Performance Metrics**: Track reception quality and coverage
+- **Real-time Monitoring**: Live position updates for multiple aircraft
+- **Data Retention**: Configurable retention policies for long-term storage
 
 ### Startup Reconciliation
 
@@ -194,6 +304,11 @@ The script provides colorized console output:
 - 🟡 Yellow: Warnings (connection issues, missing data)
 - 🔴 Red: Errors (S3 failures, missing buckets)
 
+When TSDB is enabled, output includes:
+- Total REST writes to InfluxDB
+- Current active aircraft count
+- Position update frequency (every 0.25 seconds)
+
 ## Troubleshooting
 
 **MinIO not starting on Windows:**
@@ -210,6 +325,15 @@ The script provides colorized console output:
 - Verify credentials in `config.json` match MinIO
 - Check bucket exists: Use MinIO console at `http://localhost:9001`
 - Ensure sufficient disk space for MinIO data directory
+
+**TSDB connection failures:**
+- Verify InfluxDB 3 is running: `curl http://127.0.0.1:8181/health`
+- Check token in `config.json` matches InfluxDB admin token
+- Ensure database exists: `influxdb3 query --database airsquawk --token YOUR_ADMIN_TOKEN "SHOW TABLES"`
+- Test write manually: Use the test commands in the TSDB section
+- **Authentication errors**: Ensure InfluxDB was started with `--auth-token` flag
+- **Token permissions**: Use admin token for setup, write token for production
+- **Token format**: Should start with `apiv3_` and be properly quoted in commands
 
 **No aircraft data:**
 - Verify PiAware dump1090 is running and accessible
