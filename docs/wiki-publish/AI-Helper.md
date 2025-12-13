@@ -11,7 +11,7 @@ Use the AI to accelerate development while keeping changes safe and reviewable.
 ```powershell
 npm start
 npm test
-python tools/test_all.py
+python tools/stashed/test_all.py
 python tools/test_s3_structure.py --dates-only
 python tools/test_s3_structure.py --gaps-only
 ```

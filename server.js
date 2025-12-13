@@ -494,7 +494,21 @@ async function loadState() {
     try {
         if (fs.existsSync(STATE_FILE)) {
             const data = await fs.promises.readFile(STATE_FILE, 'utf8');
-            const state = JSON.parse(data);
+            let state = {};
+            try {
+                state = JSON.parse(data);
+            } catch (parseErr) {
+                // Backup corrupt state file so operator can inspect it, then continue with empty state
+                try {
+                    const backupName = STATE_FILE + `.corrupt_${Date.now()}`;
+                    await fs.promises.rename(STATE_FILE, backupName);
+                    logger.warn(`Corrupt state file detected. Backed up to ${backupName}`);
+                } catch (bakErr) {
+                    logger.error('Failed to move corrupt state file:', bakErr);
+                }
+                state = {};
+            }
+
             aircraftTracking = state.aircraftTracking || {};
             positionHistory = state.positionHistory || [];
             runningPositionCount = state.runningPositionCount || 0;

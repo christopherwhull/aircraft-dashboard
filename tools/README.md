@@ -5,7 +5,8 @@ This directory contains all the utility scripts and tools for the AirSquawk proj
 ## Categories
 
 ### Data Analysis & Processing
-- `aircraft-tracker.py` - Main aircraft tracking script
+- `aircraft-tracker.py` - Main aircraft tracking script with S3 uploads, KML generation, and optional TSDB writes
+- `backfill_tsdb_from_s3.py` - Backfill historical position data from S3 minute files to TSDB
 - `analyze_readonly_source.py` - Analyze readonly data sources
 - `analyze_squawk_local.py` - Analyze squawk codes locally
 - `analyze_squawk_s3.py` - Analyze squawk codes from S3
@@ -116,7 +117,7 @@ npm run test:all
 This wrapper is implemented as `tools/test-all.js` and invokes the existing tests in sequence:
 - `npm test` (Jest unit tests)
 - `python tools/run_tests.py` (integration tests; will use `python3` or `python` if available)
-- Python (`tools/test_all.py`) on all platforms or `tools/run-tests.sh` on Unix if present
+- Python (`tools/stashed/test_all.py`) on all platforms or `tools/run-tests.sh` on Unix if present
 
 It returns an exit code of `0` if all test groups pass, otherwise non-zero and prints a summary.
 - `find_last_1200_squawk.js` - Find last squawk 1200
@@ -135,8 +136,14 @@ node tools/check_airline_stocks.js
 # Python tools
 python tools/aircraft-tracker.py
 
+# Backfill TSDB from S3 minute files
+python tools/backfill_tsdb_from_s3.py --dry-run  # Preview what would be backfilled
+python tools/backfill_tsdb_from_s3.py --limit 10  # Process first 10 files of each type
+python tools/backfill_tsdb_from_s3.py --start-date 2025-12-01  # From specific date
+python tools/backfill_tsdb_from_s3.py --skip-hourly  # Only process minute files
+
 # Python tools
-python tools/test_all.py
+python tools/stashed/test_all.py
 ```
 
 ## Leaflet test harness (Puppeteer)
@@ -198,6 +205,92 @@ This project includes scripts and utilities to help an AI agent or automation sa
 	 - `--max-airline-db-age-min=<n>` sets the maximum acceptable age (in minutes) for the stored airline DB; if the stored timestamp is older than this value an assertion warning (not failure) will be emitted; defaults to `60`.
 
 	Note: UI improvements include a small airline DB indicator in the page header and a "Clear Airline DB Cache" button in the Cache Status tab which clears the `airlineDB-v1` entry in localStorage and clears the in-memory `window.airlineDB` state.
+
+	## Time-Series DB helper (InfluxDB 3)
+
+	We included a lightweight helper `tools/tsdb-check.py` to create databases and tokens and to perform a write/query test using the InfluxDB 3 CLI; you can also use the Python v3 client (`influxdb3-python`) for tests with `--use-python-client`.
+
+	Example usage:
+
+	```pwsh
+	# Create database (requires admin token)
+	C:\influxdb3-core-3.7.0-windows_amd64\influxdb3.exe create database aircraft --host http://127.0.0.1:8181 --token <ADMIN_TOKEN>
+
+	# Use helper to create DB, create a token, write a test point and query it
+	python tools/tsdb-check.py --cli-path "C:\\influxdb3-core-3.7.0-windows_amd64\\influxdb3.exe" --host http://127.0.0.1:8181 --database aircraft --admin-token "<ADMIN_TOKEN>" --create-token --write-token-from-admin
+
+	# Use helper to write test point using existing token
+	python tools/tsdb-check.py --cli-path "C:\\influxdb3-core-3.7.0-windows_amd64\\influxdb3.exe" --host http://127.0.0.1:8181 --database aircraft --write-token "<TRACKER_TOKEN>"
+
+	# Use the Python v3 client instead of the CLI (requires installing `influxdb3-python`)
+	python tools/tsdb-check.py --host http://127.0.0.1:8181 --database aircraft --write-token "<TRACKER_TOKEN>" --use-python-client
+	```
+
+	Tracker: Start with REST to InfluxDB v3 on port 8181 (direct token usage)
+	```pwsh
+	# Start the aircraft tracker and write to InfluxDB v3 via REST on port 8181
+	python tools/aircraft-tracker.py --enable-tsdb --tsdb-type influxdb3 --tsdb-url http://127.0.0.1:8181 --tsdb3-token apiv3_zfjnod7a-_LaE9RFBQ80xdzuxW7NVQxJ0pGcbzLr-42gOJ57SmL1l8D-HHAiDxJciG6vUl0Uw0LxYWjRKT3aiQ
+	```
+
+	Notes:
+	- The helper accepts the admin token via the `--admin-token` flag or `INFLUXDB3_ADMIN_TOKEN` environment variable.
+	- To run tests using the Python v3 client, install the client package:
+
+	```pwsh
+	pip install influxdb3-python
+	```
+	- The CLI path default is `influxdb3`, but you can pass a full path using `--cli-path` if your environment doesn't have it in PATH.
+	- For production use, create a dedicated least-privilege token and specify with `--write-token`.
+
+	- The InfluxDB write now includes additional aircraft fields in the `aircraft_positions` measurement:
+	  - numeric fields: `heading`, `rssi`, `first_seen`, `last_seen`, `squawk_changed` (as 0/1)
+	  - string field: `data_quality` (e.g., GPS, GPS approx, No position)
+
+### TimescaleDB (Postgres) configuration & test
+
+- You can configure TimescaleDB connection details under the `tsdb` block in `config.json` to store aircraft positions in a PostgreSQL/TimescaleDB database. Example:
+
+```jsonc
+"tsdb": {
+	"type": "timescale",
+	"url": "postgresql://timescale_user:tsPwd2025!@192.168.0.100:5432/aircraft_test",
+	"db": "aircraft_test",
+	"user": "timescale_user",
+	"password": "tsPwd2025!",
+	"measurement": "aircraft_positions"
+}
+```
+
+- Use `tools/timescale-check.py` to test connectivity and writes. It accepts `--host`, `--port`, `--db`, `--user`, `--password`, and flags like `--create-table`, `--insert-test` and `--query-test`.
+
+- Example usage (if using Postgres default port 5432):
+
+```pwsh
+python tools/timescale-check.py --create-table --insert-test --query-test --host 192.168.0.100 --port 5432 --db aircraft_test --user timescale_user --password "tsPwd2025!"
+```
+
+Notes:
+- If your Timescale server uses a non-standard port (e.g., 8181) and speaks the Postgres protocol there, you can configure that port in `tsdb.url` (use the `postgresql://` scheme). The tracker will attempt to connect using `psycopg2` and will fail if the server doesn't speak Postgres protocol on that port.
+- If your Timescale instance exposes an HTTP REST write endpoint, configure `tsdb.url` with the HTTP write URL and keep `tsdb.type` as `timescale`; the tracker will detect an `http` scheme and POST JSON rows (with optional Basic Auth using `tsdb.user` and `tsdb.password`). See the example below:
+
+```jsonc
+"tsdb": {
+	"type": "timescale",
+	"url": "http://192.168.0.100:8181/timescale_write",
+	"db": "aircraft_test",
+	"user": "timescale_user",
+	"password": "tsPwd2025!",
+	"measurement": "aircraft_positions"
+}
+```
+
+Use the `--use-http` flag with the `tools/timescale-check.py` helper to test HTTP writes:
+
+```pwsh
+python tools/timescale-check.py --use-http --endpoint "http://192.168.0.100:8181/timescale_write" --user timescale_user --password "tsPwd2025!"
+```
+- When using the `tsdb.url` field with a URL, include the `postgresql://` scheme and credentials and use a safe password (avoid `@` within the password or percent-encode it properly).
+ 
 
 	Positions timescale
 	-------------------

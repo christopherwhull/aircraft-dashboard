@@ -56,6 +56,18 @@ def read_config():
             data_source = data.get('dataSource', {})
             config['piaware_url'] = data_source.get('piAwareUrl', config['piaware_url'])
 
+            # Extract TSDB configuration (optional)
+            tsdb = data.get('tsdb', {})
+            # tsdb can be either a pure object with keys or top-level older fields
+            config['tsdb_type'] = tsdb.get('type', data.get('tsdb_type', 'influxdb'))
+            config['tsdb_url'] = tsdb.get('url', data.get('tsdb_url', 'http://localhost:8086'))
+            config['tsdb_db'] = tsdb.get('db', data.get('tsdb_db', 'aircraft'))
+            config['tsdb_user'] = tsdb.get('user', data.get('tsdb_user', ''))
+            config['tsdb_password'] = tsdb.get('password', data.get('tsdb_password', ''))
+            config['tsdb_measurement'] = tsdb.get('measurement', data.get('tsdb_measurement', 'aircraft_positions'))
+            # Optionally parse a token for HTTP bearer auth
+            config['tsdb_token'] = tsdb.get('token', data.get('tsdb_token', ''))
+
     except FileNotFoundError:
         print(f"Warning: config.json not found at {config_path}, using defaults")
     except Exception as e:
@@ -69,6 +81,14 @@ def read_config():
     config['read_bucket'] = os.environ.get('READ_BUCKET', config['read_bucket'])
     config['write_bucket'] = os.environ.get('WRITE_BUCKET', config['write_bucket'])
     config['piaware_url'] = os.environ.get('PIAWARE_URL', config['piaware_url'])
+    # TSDB environment overrides
+    config['tsdb_type'] = os.environ.get('TSDB_TYPE', config.get('tsdb_type', 'influxdb'))
+    config['tsdb_url'] = os.environ.get('TSDB_URL', config.get('tsdb_url', 'http://localhost:8086'))
+    config['tsdb_db'] = os.environ.get('TSDB_DB', config.get('tsdb_db', 'aircraft'))
+    config['tsdb_user'] = os.environ.get('TSDB_USER', config.get('tsdb_user', ''))
+    config['tsdb_password'] = os.environ.get('TSDB_PASSWORD', config.get('tsdb_password', ''))
+    config['tsdb_measurement'] = os.environ.get('TSDB_MEASUREMENT', config.get('tsdb_measurement', 'aircraft_positions'))
+    config['tsdb_token'] = os.environ.get('TSDB_TOKEN', config.get('tsdb_token', ''))
 
     return config
 

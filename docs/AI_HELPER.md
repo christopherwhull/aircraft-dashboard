@@ -47,7 +47,7 @@ npm start
 npm test
 
 # Run Python test suite (integration & S3 diagnostics)
-python tools/test_all.py
+python tools/stashed/test_all.py
 
 # S3 structure/dates/gaps checks (UTC output)
 python tools/test_s3_structure.py --structure-only
@@ -59,6 +59,14 @@ python tools/test_s3_structure.py           # full run
 # Export missing logos to CSV
 python tools/test_s3_structure.py --logos-only --logos-csv missing_logos.csv
 ```
+
+Tracker (InfluxDB v3 / REST) (AI helper snippet)
+```powershell
+# Start the aircraft tracker and write to InfluxDB v3 (REST) on port 8181 using an explicit token
+python tools/aircraft-tracker.py --enable-tsdb --tsdb-type influxdb3 --tsdb-url http://127.0.0.1:8181 --tsdb3-token apiv3_JsZo4nu68c-h74X_WfQYjFoV6fazUsn8v0jc6zS5gamnGpXuYfMEPfjZ1jpH1TbuEQOZY0TW5HbrkiU7kZk3XA
+```
+
+Tip: If you prefer to keep tokens out of scripts, persist a write token to `runtime/tsdb_token.json` and omit `--tsdb3-token` so the tracker reads the token file.
 
 Restart server (local or API):
 ```powershell
@@ -110,7 +118,7 @@ Example:
 
 ## Contact Points
 - Main docs: `README.md`, `CONFIGURATION.md`, `LINUX_SETUP.md`, `MINIO_SETUP.md`
-- Tests: `__tests__/`, `tools/test_all.py`, `tools/test_s3_structure.py`
+- Tests: `__tests__/`, `tools/stashed/test_all.py`, `tools/test_s3_structure.py`
 - Server: `server.js`, `lib/api-routes.js`, `config.json`
 - S3: Buckets `aircraft-data` (read) and `aircraft-data-new` (write)
 

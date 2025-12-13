@@ -390,7 +390,7 @@ node tools/test-timewindow-api.js  # Time window functionality
 node tools/test-positions-per-hour.js # Position analytics
 
 # Python backend
-python tools/test_all.py           # Python integration tests
+python tools/stashed/test_all.py           # Python integration tests (stashed)
 python tools/test_endpoints.py     # API endpoint validation
 ```
 

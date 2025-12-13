@@ -318,7 +318,7 @@
                 <button id="clear-airline-db-cache" onclick="clearAirlineDBCache()" style="background:#ff9800">🗑️ Clear Airline DB Cache</button>
             </div>
 
-            <button onclick="loadGridData()">🔄 Refresh</button>
+            <button onclick="loadGridData()" title="Refresh">🔄</button>
             <button onclick="toggleLegend()">📋 Legend</button>
             <button onclick="resetMap()">🏠 Reset View</button>
         </div>
@@ -802,6 +802,7 @@
                         try { loadGridData(); } catch (e) {}
                     } catch (e) {}
                 });
+                try { b.dataset.attached = '1'; } catch (e) {}
             });
 
             // Restore persisted timescale if present and highlight active quick button on this page
