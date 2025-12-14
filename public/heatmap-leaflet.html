@@ -746,7 +746,29 @@
         }
 
         // Initialize the map
-        initializeMap();
+        (async () => {
+            try {
+                await initializeMap();
+                console.log('Map initialized successfully');
+                
+                // Always start live positions since show-live is always enabled
+                try {
+                    // Start live positions now that map is ready
+                    setTimeout(() => { try { toggleLivePositions(); } catch (e) { console.warn('Auto-start toggle failed', e); } }, 50);
+                } catch (e) {
+                    console.warn('Failed to auto-start live positions:', e);
+                }
+
+                // Always start long tracks polling (mandatory)
+                try {
+                    setTimeout(() => { try { startLongTracksPolling(); } catch (e) { console.warn('Failed to start long tracks polling', e); } }, 100);
+                } catch (e) {
+                    console.warn('Failed to auto-start long tracks:', e);
+                }
+            } catch (error) {
+                console.error('Failed to initialize map:', error);
+            }
+        })();
 
         let gridLayer = null;
         // we'll register overlays (heatmap grid, live positions, persisted tracks) with the layers control
@@ -946,33 +968,16 @@
             });
         } catch (e) {}
 
-        
-
-        // Always start live positions since show-live is always enabled
-        try {
-            // Defer starting live positions until after initialization to avoid TDZ issues
-            setTimeout(() => { try { toggleLivePositions(); } catch (e) { console.warn('Auto-start toggle failed', e); } }, 50);
-        } catch (e) {
-            console.warn('Failed to auto-start live positions:', e);
-        }
-
-        // Always start long tracks polling (mandatory)
-        try {
-            setTimeout(() => { try { startLongTracksPolling(); } catch (e) { console.warn('Failed to start long tracks polling', e); } }, 100);
-        } catch (e) {
-            console.warn('Failed to auto-start long tracks:', e);
-        }
-
         // Set up weather radar refresh interval (5 minutes)
         setInterval(() => {
             const timestamp = Date.now();
-            if (map.hasLayer(weatherRadar)) {
+            if (window.map && typeof window.map.hasLayer === 'function' && window.map.hasLayer(weatherRadar)) {
                 weatherRadar.setUrl(weatherRadarUrl + `?t=${timestamp}`);
             }
-            if (map.hasLayer(surfaceAnalysis)) {
+            if (window.map && typeof window.map.hasLayer === 'function' && window.map.hasLayer(surfaceAnalysis)) {
                 surfaceAnalysis.setUrl(surfaceAnalysisUrl + `?t=${timestamp}`);
             }
-            if (map.hasLayer(satelliteWv)) {
+            if (window.map && typeof window.map.hasLayer === 'function' && window.map.hasLayer(satelliteWv)) {
                 satelliteWv.setUrl(satelliteWvUrl + `?t=${timestamp}`);
             }
         }, 5 * 60 * 1000);
@@ -1304,10 +1309,14 @@
         // Start/stop long tracks fetch (always enabled by default)
         function startLongTracksPolling() {
             if (longTracksIntervalId) return;
+            if (!window.map || typeof window.map.hasLayer !== 'function') {
+                console.warn('startLongTracksPolling: map not ready');
+                return;
+            }
             // initial run
             fetchAndDrawLongTracks();
             longTracksIntervalId = setInterval(fetchAndDrawLongTracks, LONG_TRACKS_POLL_MS);
-            if (!map.hasLayer(longTracksLayer)) longTracksLayer.addTo(map);
+            if (!window.map.hasLayer(longTracksLayer)) longTracksLayer.addTo(window.map);
         }
 
         function stopLongTracksPolling() {
@@ -1321,10 +1330,14 @@
 
         function startLiveTracksPolling() {
             if (liveTracksIntervalId) return;
+            if (!window.map || typeof window.map.hasLayer !== 'function') {
+                console.warn('startLiveTracksPolling: map not ready');
+                return;
+            }
             // initial run
             fetchAndDrawLiveTracks();
             liveTracksIntervalId = setInterval(fetchAndDrawLiveTracks, LIVE_TRACKS_POLL_MS);
-            if (!map.hasLayer(liveTracksLayer)) liveTracksLayer.addTo(map);
+            if (!window.map.hasLayer(liveTracksLayer)) liveTracksLayer.addTo(window.map);
         }
 
         function stopLiveTracksPolling() {
@@ -1357,15 +1370,13 @@
         }
 
         async function fetchAndDrawLongTracks() {
+            if (!window.map || typeof window.map.getBounds !== 'function') {
+                console.warn('fetchAndDrawLongTracks: map not ready');
+                return;
+            }
             try {
                 // gather visible hexes from liveMarkers
-                // Ensure we prefer the Leaflet map object reference exposed on window, but fallback to local `map`.
-                const mapRef = (typeof window !== 'undefined' && window.map) ? window.map : map;
-                if (!mapRef || typeof mapRef.getBounds !== 'function') {
-                    console.warn('fetchAndDrawLongTracks: mapRef not ready or invalid:', mapRef);
-                    return;
-                }
-                const bounds = mapRef.getBounds();
+                const bounds = window.map.getBounds();
                 const visible = [];
                 liveMarkers.forEach((marker, hex) => {
                     try {
@@ -1430,9 +1441,13 @@
 
         // Fetch and draw short live tracks for currently active flights (visible on the map)
         async function fetchAndDrawLiveTracks() {
+            if (!window.map || typeof window.map.getBounds !== 'function') {
+                console.warn('fetchAndDrawLiveTracks: map not ready');
+                return;
+            }
             try {
                 // gather visible hexes from liveMarkers
-                const bounds = map.getBounds();
+                const bounds = window.map.getBounds();
                 const visible = [];
                 liveMarkers.forEach((marker, hex) => {
                     try {
@@ -1544,9 +1559,13 @@
 
         async function runBatchPollOnce() {
             if (batchPollInFlight) return; // avoid overlapping
+            if (!window.map || typeof window.map.getBounds !== 'function') {
+                console.warn('runBatchPollOnce: map not ready');
+                return;
+            }
             try {
                 // Gather visible hex keys from liveMarkers that are inside map bounds
-                const bounds = map.getBounds();
+                const bounds = window.map.getBounds();
                 const visible = [];
                 liveMarkers.forEach((marker, hex) => {
                     try {
@@ -2866,7 +2885,7 @@
                 hoverTrackHex = null;
                 trackLayer.clearLayers();
                 longTracksLayer.clearLayers();
-                if (map.hasLayer(trackLayer)) map.removeLayer(trackLayer);
+                if (window.map && typeof window.map.hasLayer === 'function' && window.map.hasLayer(trackLayer)) window.map.removeLayer(trackLayer);
                 // Stop batch polling when live is disabled
                 try { stopBatchPollingVisibleFlights(); } catch (e) {}
                 // Stop live tracks polling and clear live tracks

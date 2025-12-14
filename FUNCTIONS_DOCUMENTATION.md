@@ -101,6 +101,58 @@
 
 ---
 
+### Logo Cache Management Functions
+
+#### `isLogoRecentlyLoaded(url)`
+**Purpose:** Checks if a logo URL has been recently loaded to prevent duplicate HTTP requests.
+
+**Parameters:**
+- `url` (string): Logo URL to check
+
+**Returns:** boolean - true if recently loaded (within 30 seconds), false otherwise
+
+**Implementation:**
+- Uses global Map (`window._logoCache`) for URL → timestamp storage
+- Considers logos "recent" if loaded within last 30 seconds
+- Prevents duplicate requests that cause UI flickering
+
+**Usage:** Called before initiating any logo image load request
+
+---
+
+#### `markLogoAsLoaded(url)`
+**Purpose:** Marks a logo URL as recently loaded to prevent future duplicate requests.
+
+**Parameters:**
+- `url` (string): Logo URL that was successfully loaded
+
+**Returns:** void
+
+**Implementation:**
+- Stores current timestamp in global logo cache Map
+- Enables future `isLogoRecentlyLoaded()` checks
+- Automatic cleanup removes entries older than 5 minutes
+
+**Usage:** Called after successful logo image load completion
+
+---
+
+#### Logo Cache Cleanup
+**Purpose:** Prevents memory leaks by removing expired logo cache entries.
+
+**Implementation:**
+- Runs every 5 minutes via `setInterval`
+- Removes entries older than 5 minutes
+- Logs cleanup statistics for debugging
+- Maintains cache size under control
+
+**Benefits:**
+- Prevents memory accumulation over time
+- Balances performance (cache hits) with memory usage
+- No manual intervention required
+
+---
+
 ### Airline Statistics Functions
 
 #### `loadAirlineStats(hoursBack = null)`

@@ -29,7 +29,7 @@ const io = socketIo(server);
 
 // --- Load Configuration ---
 const PORT = config.server.mainPort;
-const PIAWARE_URL = config.dataSource.piAwareUrl;
+const PIAWARE_URLS = config.data.piAwareUrls;
 const BUCKET_NAME = config.buckets.readBucket;
 const WRITE_BUCKET_NAME = config.buckets.writeBucket;
 const STATE_FILE = path.join(__dirname, config.state.stateFile);
@@ -71,6 +71,125 @@ let globalCache = {
     lastRead: null,
     lastWrite: null
 };
+
+// --- TSDB Write Counter ---
+let tsdbWriteCount = 0;
+
+// --- TSDB Write Functions ---
+async function writeLinesToTSDB(lines) {
+    const tsdbConfig = config.tsdb;
+    if (!tsdbConfig || !tsdbConfig.url || !tsdbConfig.token || !tsdbConfig.db) {
+        console.log('TSDB: Config not found, skipping write');
+        return 0;
+    }
+
+    const urls = [
+        `${tsdbConfig.url}/api/v2/write?bucket=${tsdbConfig.db}&precision=ns`,
+        `${tsdbConfig.url}/api/v3/write_lp?db=${tsdbConfig.db}`,
+        `${tsdbConfig.url}/api/v3/write_lp?bucket=${tsdbConfig.db}`
+    ];
+
+    const headers = {
+        'Content-Type': 'text/plain',
+        'Authorization': `Bearer ${tsdbConfig.token}`
+    };
+
+    const body = lines.join('\n') + '\n';
+    console.log(`TSDB: Attempting to write ${lines.length} lines`);
+
+    for (const url of urls) {
+        try {
+            const response = await axios.post(url, body, { headers, timeout: 10000 });
+            if (response.status === 200 || response.status === 204) {
+                const written = lines.length;
+                tsdbWriteCount += written;
+                console.log(`TSDB: Successfully wrote ${written} records to ${url}`);
+                return written;
+            }
+        } catch (error) {
+            console.log(`TSDB: Write to ${url} failed: ${error.message}`);
+        }
+    }
+
+    console.log('TSDB: All write attempts failed');
+    return 0;
+}
+
+function formatPositionAsLineProtocol(position, receiverLat = 0.0, receiverLon = 0.0) {
+    const { hex, flight, lat, lon, alt, gs, track, timestamp, registration, aircraft_type, squawk, rssi } = position;
+
+    // Validate required fields
+    if (!lat || !lon || lat === 'N/A' || lon === 'N/A') {
+        return null;
+    }
+
+    // Build tags
+    const tags = {
+        icao: hex,
+        flight: flight || 'N/A',
+        registration: registration || 'N/A',
+        type: aircraft_type || 'N/A',
+        data_source: 'piaware',
+        receiver_id: 'server',  // Server-based collection
+        receiver_version: '1.0'
+    };
+
+    // Build fields
+    const fields = {};
+    fields.lat = parseFloat(lat) || 0.0;
+    fields.lon = parseFloat(lon) || 0.0;
+
+    if (squawk && squawk !== 'N/A') {
+        const squawkNum = parseInt(squawk);
+        if (!isNaN(squawkNum)) {
+            fields.squawk = squawkNum;
+        }
+    }
+
+    if (alt && alt !== 'N/A') {
+        const altNum = parseInt(alt);
+        if (!isNaN(altNum)) {
+            fields.altitude_ft = altNum;
+        }
+    }
+
+    if (gs && gs !== 'N/A') {
+        const gsNum = parseFloat(gs);
+        if (!isNaN(gsNum)) {
+            fields.speed_kt = gsNum;
+        }
+    }
+
+    if (track && track !== 'N/A') {
+        const trackNum = parseFloat(track);
+        if (!isNaN(trackNum)) {
+            fields.heading = trackNum;
+        }
+    }
+
+    if (rssi && rssi !== 'N/A') {
+        const rssiNum = parseFloat(rssi);
+        if (!isNaN(rssiNum)) {
+            fields.rssi = rssiNum;
+        }
+    }
+
+    // Add receiver location information
+    fields.receiver_lat = receiverLat;
+    fields.receiver_lon = receiverLon;
+
+    // Format as line protocol
+    const tagsStr = Object.entries(tags).map(([k, v]) => `${k}=${v}`).join(',');
+    const fieldsStr = Object.entries(fields).map(([k, v]) => {
+        if (typeof v === 'string') {
+            return `${k}="${v.replace(/"/g, '\\"')}"`;
+        }
+        return `${k}=${v}`;
+    }).join(',');
+
+    const timeNs = timestamp * 1000000; // Convert milliseconds to nanoseconds
+    return `aircraft_positions_v2,${tagsStr} ${fieldsStr} ${timeNs}`;
+}
 
 // --- Position Cache (7 days of historical data in memory) ---
 const positionCache = new PositionCache(s3, 
@@ -1312,93 +1431,122 @@ function generateHeatmapData(positions, gridSize = 0.01) {
 // --- Core Logic ---
 const fetchData = async () => {
     try {
-        const [response, airlineDb, typesDb] = await Promise.all([
-            axios.get(PIAWARE_URL),
+        // Fetch from all PiAware receivers (current + historical data)
+        const currentPromises = PIAWARE_URLS.map(url => 
+            axios.get(url).catch(err => {
+                logger.warn(`Failed to fetch current data from ${url}: ${err.message}`);
+                return { data: { aircraft: [] } }; // Return empty data on failure
+            })
+        );
+        
+        // Also fetch historical data (last 120 seconds)
+        const historyPromises = PIAWARE_URLS.map(url => 
+            axios.get(`${url}?history=120`).catch(err => {
+                logger.warn(`Failed to fetch historical data from ${url}: ${err.message}`);
+                return { data: { aircraft: [] } }; // Return empty data on failure
+            })
+        );
+        
+        const [currentResponses, historyResponses, airlineDb, typesDb] = await Promise.all([
+            Promise.all(currentPromises),
+            Promise.all(historyPromises),
             getAirlineDatabase(s3, BUCKET_NAME),
             getAircraftTypesDatabase(s3, BUCKET_NAME)
         ]);
 
         if (!airlineDb || typeof airlineDb !== 'object' || !typesDb || typeof typesDb !== 'object') {
             logger.error('CRITICAL: Databases not loaded. Skipping data enrichment.');
-            // Continue without enrichment if databases fail to load
-            const liveAircraft = response.data.aircraft || [];
-            io.emit('liveUpdate', {
-                trackingCount: Object.keys(aircraftTracking).length,
-                runningPositionCount,
-                aircraft: liveAircraft,
-                runtime: Math.floor((Date.now() - trackerStartTime) / 1000)
-            });
-            return;
         }
 
-        const liveAircraft = response.data.aircraft || [];
-        const now = Date.now();
-
-        const enrichedAircraft = await Promise.all(liveAircraft.map(async (ac) => {
-            const flight = (ac.flight || '').trim();
-            const airlineCode = flight.substring(0, 3);
-            let dbInfo = await getDbInfo(ac.hex);
-            if (!dbInfo) dbInfo = {};
-
-            // Lookup aircraft in OpenSky database
-            const aircraftData = aircraftDB.lookup(ac.hex);
-            
-            // Use OpenSky data as primary source, fall back to old methods
-            const registration = aircraftData?.registration 
-                || ac.r 
-                || dbInfo.r 
-                || registration_from_hexid(ac.hex) 
-                || 'N/A';
-            
-            const aircraft_type = aircraftData?.typecode 
-                || ac.t 
-                || dbInfo.t 
-                || 'N/A';
-            
-            const aircraft_model = aircraftData?.model || null;
-            
-            // Lookup type information (manufacturer, body type)
-            const typeInfo = aircraftTypesDB.lookup(aircraft_type);
-            const manufacturer = typeInfo?.manufacturer || null;
-            const bodyType = typeInfo?.bodyType || null;
-            const fullModel = typeInfo?.model || aircraft_model;
-
-            // Lookup manufacturer logo
-            let manufacturerLogo = null;
-            if (manufacturer) {
-                // Find manufacturer code by name
-                const manufacturerEntry = Object.entries(airlineDb).find(([code, data]) => 
-                    data.name === manufacturer
-                );
-                if (manufacturerEntry) {
-                    const [manufacturerCode, manufacturerData] = manufacturerEntry;
-                    manufacturerLogo = manufacturerData.logo;
+        // Aggregate aircraft data from all receivers (current + historical)
+        const aircraftMap = new Map(); // Use Map to deduplicate by hex code
+        
+        // Process current data first
+        for (const response of currentResponses) {
+            const aircraftList = response.data.aircraft || [];
+            for (const aircraft of aircraftList) {
+                if (aircraft.hex) {
+                    aircraftMap.set(aircraft.hex, { ...aircraft, dataSource: 'current' });
                 }
             }
-
-            // Lookup airline logo
-            let airlineLogo = null;
-            if (airlineCode && airlineDb[airlineCode]) {
-                const airlineData = airlineDb[airlineCode];
-                airlineLogo = typeof airlineData === 'string' ? null : airlineData.logo;
+        }
+        
+        // Then process historical data, only adding aircraft not already in current data
+        for (const response of historyResponses) {
+            const aircraftList = response.data.aircraft || [];
+            for (const aircraft of aircraftList) {
+                if (aircraft.hex && !aircraftMap.has(aircraft.hex)) {
+                    aircraftMap.set(aircraft.hex, { ...aircraft, dataSource: 'historical' });
+                }
             }
+        }
+        
+        // Convert map to array for further processing
+        const allAircraft = Array.from(aircraftMap.values());
+        
+        // Separate current and historical aircraft for different purposes
+        const liveAircraft = allAircraft.filter(ac => ac.dataSource === 'current');
+        const historicalAircraft = allAircraft.filter(ac => ac.dataSource === 'historical');
+        
+        // Enrich aircraft data if databases are available
+        if (airlineDb && typesDb) {
+            for (const aircraft of allAircraft) {
+                const flight = (aircraft.flight || '').trim();
+                const airlineCode = flight.substring(0, 3);
+                
+                // Lookup aircraft in OpenSky database
+                const aircraftData = aircraftDB.lookup(aircraft.hex);
+                
+                // Use OpenSky data as primary source, fall back to old methods
+                const registration = aircraftData?.registration 
+                    || aircraft.r 
+                    || registration_from_hexid(aircraft.hex) 
+                    || 'N/A';
+                
+                const aircraft_type = aircraftData?.typecode 
+                    || aircraft.t 
+                    || 'N/A';
+                
+                const aircraft_model = aircraftData?.model || null;
+                
+                // Lookup type information (manufacturer, body type)
+                const typeInfo = aircraftTypesDB.lookup(aircraft_type);
+                const manufacturer = typeInfo?.manufacturer || 'N/A';
+                const bodyType = typeInfo?.bodyType || 'N/A';
+                const manufacturerLogo = typeInfo?.manufacturerLogo || 
+                    (manufacturer && manufacturer !== 'N/A' ? `/api/v2logos/${encodeURIComponent(manufacturer)}` : null);
+                
+                // Create full model name
+                const fullModel = aircraft_model || typeInfo?.model || 'N/A';
+                
+                // Lookup airline information
+                let airlineLogo = null;
+                if (airlineCode && airlineDb[airlineCode]) {
+                    const airlineData = airlineDb[airlineCode];
+                    airlineLogo = typeof airlineData === 'string' ? null : airlineData.logo;
+                }
 
-            return {
-                ...ac,
-                flight,
-                airline: (airlineDb[airlineCode]?.name || airlineDb[airlineCode]) || 'N/A',
-                registration,
-                aircraft_type,
-                aircraft_model: fullModel,
-                manufacturer,
-                bodyType,
-                manufacturerLogo,
-                airlineLogo,
-                distance: (ac.lat && ac.lon && receiver_lat !== 0.0) ? calculate_distance(receiver_lat, receiver_lon, ac.lat, ac.lon).toFixed(1) : 'N/A',
-            };
-        }));
+                // Update aircraft with enriched data
+                aircraft.flight = flight;
+                aircraft.airline = (airlineDb[airlineCode]?.name || airlineDb[airlineCode]) || 'N/A';
+                aircraft.registration = registration;
+                aircraft.aircraft_type = aircraft_type;
+                aircraft.aircraft_model = fullModel;
+                aircraft.manufacturer = manufacturer;
+                aircraft.bodyType = bodyType;
+                aircraft.manufacturerLogo = manufacturerLogo;
+                aircraft.airlineLogo = airlineLogo;
+                aircraft.distance = (aircraft.lat && aircraft.lon && receiver_lat !== 0.0) ? calculate_distance(receiver_lat, receiver_lon, aircraft.lat, aircraft.lon).toFixed(1) : 'N/A';
+            }
+        }
 
-        enrichedAircraft.forEach(ac => {
+        const now = Date.now();
+
+        // Collect positions for TSDB write
+        const positionsForTSDB = [];
+
+        // Update tracking and position history
+        liveAircraft.forEach(ac => {
             if (ac.lat !== undefined && ac.lon !== undefined) {
                 // Calculate slant distance for reception records
                 if (receiver_lat !== 0.0 && receiver_lon !== 0.0 && ac.alt_baro && ac.alt_baro !== 'N/A') {
@@ -1420,12 +1568,17 @@ const fetchData = async () => {
                     timestamp: now,
                     registration: ac.registration,
                     aircraft_type: ac.aircraft_type,
-                    airline: ac.airline
+                    airline: ac.airline,
+                    squawk: ac.squawk,
+                    rssi: ac.rssi
                 };
                 positionHistory.push(position);
                 
                 // Add to position cache for long-term storage
                 positionCache.addPosition(position);
+                
+                // Collect for TSDB write
+                positionsForTSDB.push(position);
                 
                 // Track squawk code changes
                 if (ac.squawk) {
@@ -1482,19 +1635,44 @@ const fetchData = async () => {
                 if (minRange === null || ac.distance < minRange) minRange = ac.distance;
             }
         });
+
+        // Write positions to TSDB
+        if (positionsForTSDB.length > 0) {
+            console.log(`TSDB: Processing ${positionsForTSDB.length} positions for TSDB write`);
+            try {
+                const lines = positionsForTSDB.map(pos => formatPositionAsLineProtocol(pos, receiver_lat, receiver_lon)).filter(line => line !== null);
+                console.log(`TSDB: Generated ${lines.length} line protocol entries`);
+                if (lines.length > 0) {
+                    // Write in batches of 100 to avoid request size limits
+                    const batchSize = 100;
+                    for (let i = 0; i < lines.length; i += batchSize) {
+                        const batch = lines.slice(i, i + batchSize);
+                        const written = await writeLinesToTSDB(batch);
+                        if (written === 0) {
+                            console.log(`TSDB: Failed to write batch of ${batch.length} records`);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.log(`TSDB: Write error: ${error.message}`);
+            }
+        } else {
+            console.log('TSDB: No positions to write');
+        }
+
         io.emit('liveUpdate', {
             trackingCount: Object.keys(aircraftTracking).length,
             runningPositionCount,
-            aircraft: Object.values(aircraftTracking),
+            aircraft: liveAircraft,
             runtime: Math.floor((Date.now() - trackerStartTime) / 1000),
             maxRssi,
             minRssi,
             maxRange,
             minRange,
             receiver_lat,
-            receiver_lon
+            receiver_lon,
+            receiverCount: PIAWARE_URLS.length
         });
-
     } catch (error) {
         logger.error(`Fetch error: ${error.message}`);
     }
@@ -1559,7 +1737,8 @@ async function initialize() {
     }
     
     try {
-        const receiverUrl = PIAWARE_URL.replace('/data/aircraft.json', '/data/receiver.json');
+        // Try to get receiver location from the first PiAware URL
+        const receiverUrl = PIAWARE_URLS[0].replace('/data/aircraft.json', '/data/receiver.json');
         const response = await axios.get(receiverUrl, { timeout: 5000 });
         receiver_lat = response.data.lat || 0.0;
         receiver_lon = response.data.lon || 0.0;
@@ -1581,7 +1760,7 @@ async function initialize() {
         sectorAltitudeRecords
     });
     // Use BUCKET_NAME for read-only (historical) endpoints, WRITE_BUCKET_NAME for write endpoints
-    setupApiRoutes(app, s3, BUCKET_NAME, WRITE_BUCKET_NAME, getInMemoryState, globalCache, positionCache); // Pass positionCache for fast position lookups
+    setupApiRoutes(app, s3, BUCKET_NAME, WRITE_BUCKET_NAME, getInMemoryState, globalCache, positionCache, tsdbWriteCount); // Pass positionCache for fast position lookups
 
     // --- Startup: Compare minute vs hourly file position counts in write bucket ---
     if (process.env.NODE_ENV !== 'test') {
