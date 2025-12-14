@@ -293,12 +293,6 @@
             </div>
 
             <div class="control-group">
-                <label for="show-live">
-                    <input type="checkbox" id="show-live"> Show Live Positions
-                </label>
-            </div>
-
-            <div class="control-group">
                 <label for="track-window-input">Track Window (min):</label>
                 <input id="track-window-input" type="number" min="1" max="1440" step="1" value="10" style="width:70px;">
             </div>
@@ -352,6 +346,14 @@
         <div class="info-card">
             <strong>Coverage Area</strong>
             <span id="coverage-area">Loading...</span>
+        </div>
+        <div class="info-card">
+            <strong>Configuration</strong>
+            <div style="font-size:12px;color:#bbb;margin-top:4px;">
+                Source: <span id="config-source">tsdb</span> | 
+                Hours: <span id="config-hours">24</span> | 
+                Grid: <span id="config-grid-size">1.0</span>nm
+            </div>
         </div>
         <div class="info-card">
             <strong>Live Fetch</strong>
@@ -632,6 +634,98 @@
             })
             .catch(error => console.error('Failed to load ARTCC boundaries:', error));
         
+        // Load Squawk Transitions layer
+        console.log('About to create squawk transitions layer...');
+        let squawkTransitionsLayer = L.layerGroup();
+        console.log('Created empty squawk transitions layer');
+        
+        // Add to layers control immediately (even if empty)
+        if (window.layersControl) {
+            window.layersControl.addOverlay(squawkTransitionsLayer, "Squawk Transitions");
+            console.log('Added squawk transitions overlay to layers control');
+        } else {
+            console.error('Layers control not available');
+        }
+        
+        // Function to reload squawk transitions data for current time range
+        function loadSquawkTransitionsData() {
+            if (!squawkTransitionsLayer) {
+                console.warn('Squawk transitions layer not initialized yet');
+                return;
+            }
+            
+            console.log('Reloading squawk transitions data...');
+            
+            // Clear existing markers
+            squawkTransitionsLayer.clearLayers();
+            
+            // Get the current time window and convert to hours
+            const timeWindow = document.getElementById('time-window') ? document.getElementById('time-window').value : '24h';
+            
+            // Local windowToHours function
+            function windowToHours(w) {
+                if (!w) return 24;
+                if (w === 'all') return 744;
+                if (w.endsWith('d')) {
+                    const days = parseInt(w.replace('d',''), 10);
+                    return isNaN(days) ? 24 : days * 24;
+                }
+                if (w.endsWith('h')) {
+                    const hrs = parseInt(w.replace('h',''), 10);
+                    return isNaN(hrs) ? 24 : hrs;
+                }
+                return 24;
+            }
+            
+            const hours = windowToHours(timeWindow);
+            console.log('Using time window:', timeWindow, 'converted to hours:', hours);
+            
+            fetch(`/api/squawk-transitions-map?hours=${hours}`)
+                .then(response => {
+                    console.log('Squawk transitions reload API response:', response.status);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Processing', data.transitions.length, 'squawk transitions for reload');
+                    
+                    data.transitions.forEach((transition, index) => {
+                        if (transition.lat !== undefined && transition.lon !== undefined) {
+                            console.log(`Creating marker ${index} at ${transition.lat}, ${transition.lon}`);
+                            const marker = L.circleMarker([transition.lat, transition.lon], {
+                                color: 'blue',
+                                fillColor: 'blue',
+                                fillOpacity: 0.9,
+                                radius: 6,
+                                weight: 2,
+                                pane: 'markerPane'
+                            });
+                            
+                            const popupContent = `
+                                <div style="font-family: Arial, sans-serif; font-size: 12px;">
+                                    <strong>Squawk Transition</strong><br>
+                                    Aircraft: ${transition.hex || transition.icao || 'Unknown'}<br>
+                                    From: ${transition.from} → To: ${transition.to}<br>
+                                    Time: ${new Date(transition.timestamp).toLocaleString()}<br>
+                                    Position: ${transition.lat.toFixed(4)}, ${transition.lon.toFixed(4)}
+                                </div>
+                            `;
+                            
+                            marker.bindPopup(popupContent);
+                            squawkTransitionsLayer.addLayer(marker);
+                            console.log(`Added marker ${index} to layer`);
+                        } else {
+                            console.warn(`Transition ${index} missing lat/lon:`, transition);
+                        }
+                    });
+                    
+                    console.log('Squawk transitions data reloaded with', data.transitions.length, 'markers');
+                })
+                .catch(error => console.error('Failed to reload squawk transitions:', error));
+        }
+        
+        // Load initial squawk transitions data
+        loadSquawkTransitionsData();
+        
         // Log when map zoom changes
         map.on('zoomend', () => {
             // Future zoom-based logic can go here
@@ -683,7 +777,7 @@
                 scalingMode: document.getElementById('scaling-mode').value,
                 opacity: document.getElementById('opacity').value,
                 showBorders: document.getElementById('show-borders').checked,
-                showLive: document.getElementById('show-live').checked,
+                showLive: true,
                 trackWindowMinutes: document.getElementById('track-window-input') ? document.getElementById('track-window-input').value : '1',
                 // Save layer selections: base layer and overlay keys
                 baseLayer: (() => {
@@ -730,7 +824,6 @@
                         document.getElementById('opacity-value').textContent = settings.opacity;
                     }
                     if (settings.showBorders !== undefined) document.getElementById('show-borders').checked = settings.showBorders;
-                    if (settings.showLive !== undefined) document.getElementById('show-live').checked = settings.showLive;
                     if (settings.trackWindowMinutes !== undefined && document.getElementById('track-window-input')) {
                         document.getElementById('track-window-input').value = settings.trackWindowMinutes;
                     }
@@ -855,13 +948,10 @@
 
         
 
-        // If saved settings requested live updates, start them now
+        // Always start live positions since show-live is always enabled
         try {
-            const showLiveElem = document.getElementById('show-live');
-            if (showLiveElem && showLiveElem.checked) {
-                // Defer starting live positions until after initialization to avoid TDZ issues
-                setTimeout(() => { try { toggleLivePositions(); } catch (e) { console.warn('Auto-start toggle failed', e); } }, 50);
-            }
+            // Defer starting live positions until after initialization to avoid TDZ issues
+            setTimeout(() => { try { toggleLivePositions(); } catch (e) { console.warn('Auto-start toggle failed', e); } }, 50);
         } catch (e) {
             console.warn('Failed to auto-start live positions:', e);
         }
@@ -914,13 +1004,14 @@
             try { localStorage.setItem('positionsTimescale', String(val)); } catch (e) {}
             saveSettings();
             loadGridData();
+            loadSquawkTransitionsData(); // Also reload squawk transitions for the new time range
         });
 
-        // Live positions toggle
-        document.getElementById('show-live').addEventListener('change', () => {
-            saveSettings();
-            toggleLivePositions();
-        });
+        // Live positions are always enabled now
+        // document.getElementById('show-live').addEventListener('change', () => {
+        //     saveSettings();
+        //     toggleLivePositions();
+        // });
 
         function showError(message) {
             const errorDiv = document.getElementById('error');
@@ -1245,13 +1336,8 @@
         }
 
         function toggleLivePositions() {
-            const showLiveElem = document.getElementById('show-live');
-            if (!showLiveElem) return;
-            if (showLiveElem.checked) {
-                startLivePositionsPolling();
-            } else {
-                stopLivePositionsPolling();
-            }
+            // Live positions are always enabled now
+            startLivePositionsPolling();
         }
 
         function startLivePositionsPolling() {
@@ -2212,13 +2298,8 @@
                 // 7d). Override that for live polling to avoid plotting historical
                 // positions as live markers.
                 let hours = windowToHours(timeWindow);
-                try {
-                    const showLiveElem = document.getElementById('show-live');
-                    if (showLiveElem && showLiveElem.checked) {
-                        // Use a short, sensible default (1 hour) for live marker polling
-                        hours = 1;
-                    }
-                } catch (e) {}
+                // Live positions are always enabled, so always use a short window (1 hour) for live marker polling
+                hours = 1;
                 // Fetch live positions from backend `/api/positions` using selected time window
                 const res = await fetch(`/api/positions?hours=${hours}`);
                 if (!res.ok) throw new Error(`Positions API error: ${res.status}`);
@@ -2766,7 +2847,8 @@
         }
 
         function toggleLivePositions() {
-            const enabled = document.getElementById('show-live').checked;
+            // Live positions are always enabled
+            const enabled = true;
             if (enabled) {
                 // Fetch immediately and then every 5 seconds
                 fetchLivePositions();
@@ -2979,6 +3061,12 @@
                 const timeWindow = document.getElementById('time-window').value;
                 const startTime = Date.now();
 
+                // Parse URL parameters for configuration from dashboard
+                const urlParams = new URLSearchParams(window.location.search);
+                const sourceParam = urlParams.get('source'); // 'memory' or 'tsdb'
+                const hoursParam = urlParams.get('hours');
+                const gridSizeParam = urlParams.get('gridSizeNm');
+
                 // Map UI window values to the backend hours parameter used by /api/heatmap-data
                 function windowToHours(w) {
                     if (!w) return 24;
@@ -2994,9 +3082,19 @@
                     return 24;
                 }
 
-                const hours = windowToHours(timeWindow);
-                const url = `/api/heatmap-data?hours=${hours}`;
-                console.log(`Loading grid data with time window: ${timeWindow} -> ${hours} hours; fetching ${url}`);
+                // Use URL parameter hours if provided, otherwise fall back to UI selection
+                const hours = hoursParam ? parseInt(hoursParam, 10) : windowToHours(timeWindow);
+                const source = sourceParam || 'tsdb'; // default to tsdb if not specified
+                const gridSizeNm = gridSizeParam ? parseFloat(gridSizeParam) : 1.0; // default to 1.0nm if not specified
+
+                // Build API URL with parameters
+                const params = new URLSearchParams({
+                    hours: hours.toString(),
+                    source: source,
+                    gridSizeNm: gridSizeNm.toString()
+                });
+                const url = `/api/heatmap-data?${params.toString()}`;
+                console.log(`Loading grid data with URL params: source=${source}, hours=${hours}, gridSizeNm=${gridSizeNm}; fetching ${url}`);
 
                 const response = await fetch(url);
                 if (!response.ok) throw new Error(`API error: ${response.status}`);
@@ -3045,6 +3143,11 @@
                 const lonSpan = (maxLon - minLon).toFixed(2);
                 document.getElementById('coverage-area').textContent = 
                     `${latSpan}° × ${lonSpan}° (${gridData.filter(c => c.count > 0).length} cells)`;
+
+                // Update configuration display
+                document.getElementById('config-source').textContent = source;
+                document.getElementById('config-hours').textContent = hours;
+                document.getElementById('config-grid-size').textContent = gridSizeNm;
 
                 showLoading(false);
 
@@ -3119,10 +3222,9 @@
                 map.on('baselayerchange', () => { saveSettings(); });
             } catch (e) { console.warn('Failed to register layer change persistence', e); }
 
-            // If the user has 'Show Live' checked, ensure live polling is started so tooltips populate
+            // Live positions are always enabled, so always start them
             try {
-                const showLiveElem = document.getElementById('show-live');
-                if (showLiveElem && showLiveElem.checked && !liveIntervalId) {
+                if (!liveIntervalId) {
                     // Start live positions and batch polling
                     toggleLivePositions();
                 }
@@ -3197,7 +3299,20 @@
             legend.style.display = legend.style.display === 'none' ? 'block' : 'none';
         }
 
+        // Initialize configuration display from URL parameters
+        function initializeConfigDisplay() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const source = urlParams.get('source') || 'tsdb';
+            const hours = urlParams.get('hours') || '24';
+            const gridSizeNm = urlParams.get('gridSizeNm') || '1.0';
+
+            document.getElementById('config-source').textContent = source;
+            document.getElementById('config-hours').textContent = hours;
+            document.getElementById('config-grid-size').textContent = gridSizeNm;
+        }
+
         // Load initial data
+        initializeConfigDisplay();
         loadGridData();
         // Load airline mapping for logo lookup
         loadAirlineMapping();

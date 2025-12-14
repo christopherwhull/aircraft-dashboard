@@ -211,6 +211,7 @@ All scripts use `http://localhost:3002` as the default server. To change:
 3. `/api/reception-range` - Reception coverage data
 4. `/api/heatmap-data` - Grid-based heatmap data
 5. `/api/airline-stats` - Airline statistics
-6. `/api/squawk-transitions` - Squawk code transitions
-7. `/api/position-timeseries-live` - Live position data
-8. `/api/historical-stats` - Historical statistics
+6. `/api/squawk-transitions` - Squawk code transitions (S3-based)
+7. `/api/squawk-transitions-tsdb` - Squawk code transitions (TSDB/SQL-based)
+8. `/api/position-timeseries-live` - Live position data
+9. `/api/historical-stats` - Historical statistics

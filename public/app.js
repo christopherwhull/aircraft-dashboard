@@ -4227,4 +4227,100 @@ window.addEventListener('DOMContentLoaded', () => {
             });
         }
     } catch (e) { /* ignore */ }
+    
+    // Initialize heatmap configuration controls
+    initializeHeatmapConfigControls();
 });
+
+// --- Initialize Heatmap Configuration Controls ---
+function initializeHeatmapConfigControls() {
+    const sourceSelect = document.getElementById('heatmap-source');
+    const hoursSelect = document.getElementById('heatmap-hours');
+    const gridSizeSelect = document.getElementById('heatmap-grid-size');
+    
+    if (sourceSelect && hoursSelect && gridSizeSelect) {
+        // Add event listeners to update the Leaflet link when controls change
+        sourceSelect.addEventListener('change', updateLeafletLink);
+        hoursSelect.addEventListener('change', updateLeafletLink);
+        gridSizeSelect.addEventListener('change', updateLeafletLink);
+        
+        // Initialize the link with current values
+        updateLeafletLink();
+    }
+}
+
+// --- Heatmap Configuration Functions ---
+function testHeatmapConfiguration() {
+    const source = document.getElementById('heatmap-source').value;
+    const hours = document.getElementById('heatmap-hours').value;
+    const gridSizeNm = document.getElementById('heatmap-grid-size').value;
+    
+    const resultDiv = document.getElementById('heatmap-config-result');
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = '<div style="color: #42a5f5;">🔄 Testing heatmap configuration...</div>';
+    
+    const url = `/api/heatmap-data?hours=${hours}&source=${source}&gridSizeNm=${gridSizeNm}`;
+    
+    fetch(url)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Handle both array response and object with grid property
+            const gridArray = Array.isArray(data) ? data : (data.grid || []);
+            const gridCount = gridArray.length;
+            const totalPositions = gridArray.reduce((sum, cell) => sum + (cell.count || 0), 0);
+            
+            resultDiv.innerHTML = `
+                <div style="color: #4caf50; margin-bottom: 8px;">✅ Configuration test successful!</div>
+                <div style="color: #e0e0e0;">
+                    <strong>API URL:</strong> ${url}<br>
+                    <strong>Data Source:</strong> ${source === 'memory' ? 'Memory (Live)' : 'TSDB (Historical)'}<br>
+                    <strong>Time Window:</strong> ${hours} hours<br>
+                    <strong>Grid Size:</strong> ${gridSizeNm} NM<br>
+                    <strong>Grid Cells:</strong> ${gridCount}<br>
+                    <strong>Total Positions:</strong> ${totalPositions.toLocaleString()}
+                </div>
+            `;
+        })
+        .catch(error => {
+            resultDiv.innerHTML = `
+                <div style="color: #f44336; margin-bottom: 8px;">❌ Configuration test failed!</div>
+                <div style="color: #e0e0e0;">
+                    <strong>API URL:</strong> ${url}<br>
+                    <strong>Error:</strong> ${error.message}
+                </div>
+            `;
+        });
+}
+
+function resetHeatmapConfig() {
+    document.getElementById('heatmap-source').value = 'tsdb';
+    document.getElementById('heatmap-hours').value = '24';
+    document.getElementById('heatmap-grid-size').value = '1';
+    
+    const resultDiv = document.getElementById('heatmap-config-result');
+    resultDiv.style.display = 'none';
+    resultDiv.innerHTML = '';
+    
+    updateLeafletLink();
+}
+
+function updateLeafletLink() {
+    const source = document.getElementById('heatmap-source').value;
+    const hours = document.getElementById('heatmap-hours').value;
+    const gridSizeNm = document.getElementById('heatmap-grid-size').value;
+    
+    const link = document.getElementById('leaflet-heatmap-link');
+    if (link) {
+        const params = new URLSearchParams({
+            source: source,
+            hours: hours,
+            gridSizeNm: gridSizeNm
+        });
+        link.href = `/heatmap-leaflet?${params.toString()}`;
+    }
+}

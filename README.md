@@ -353,7 +353,8 @@ For comprehensive API documentation, see [`API_DOCUMENTATION.md`](API_DOCUMENTAT
 ### Analytics Endpoints
 - `/api/airline-stats` - Airline statistics
 - `/api/flights` - Flight data
-- `/api/squawk-transitions` - Squawk code changes
+- `/api/squawk-transitions` - Squawk code changes (S3-based)
+- `/api/squawk-transitions-tsdb` - Squawk code changes (TSDB/SQL-based)
 - `/api/reception-range` - Reception range analysis
 
 ### System Endpoints

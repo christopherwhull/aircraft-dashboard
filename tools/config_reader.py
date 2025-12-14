@@ -64,7 +64,7 @@ def read_config():
             config['tsdb_db'] = tsdb.get('db', data.get('tsdb_db', 'aircraft'))
             config['tsdb_user'] = tsdb.get('user', data.get('tsdb_user', ''))
             config['tsdb_password'] = tsdb.get('password', data.get('tsdb_password', ''))
-            config['tsdb_measurement'] = tsdb.get('measurement', data.get('tsdb_measurement', 'aircraft_positions'))
+            config['tsdb_measurement'] = tsdb.get('tsdb_measurement', data.get('tsdb_measurement', 'aircraft_positions'))
             # Optionally parse a token for HTTP bearer auth
             config['tsdb_token'] = tsdb.get('token', data.get('tsdb_token', ''))
 

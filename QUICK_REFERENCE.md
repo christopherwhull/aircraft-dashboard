@@ -88,11 +88,12 @@ python dashboard_utils.py --diagnose
 3. `/api/reception-range` - Reception coverage
 4. `/api/heatmap-data` - Heatmap grid data
 5. `/api/airline-stats` - Airline statistics
-6. `/api/squawk-transitions` - Squawk transitions
-7. `/api/position-timeseries-live` - Live positions
-8. `/api/historical-stats` - Historical data
+6. `/api/squawk-transitions` - Squawk transitions (S3-based)
+7. `/api/squawk-transitions-tsdb` - Squawk transitions (TSDB/SQL-based)
+8. `/api/position-timeseries-live` - Live positions
+9. `/api/historical-stats` - Historical data
 
-Note: Several endpoints now include enriched type information (manufacturer, bodyType, aircraft_model): `/api/flights`, `/api/squawk-transitions`, `/api/position-timeseries-live` (timeseries buckets may include `manufacturers` counts) and `/api/cache-status` includes a `typeDatabase` summary.
+Note: Several endpoints now include enriched type information (manufacturer, bodyType, aircraft_model): `/api/flights`, `/api/squawk-transitions`, `/api/squawk-transitions-tsdb`, `/api/position-timeseries-live` (timeseries buckets may include `manufacturers` counts) and `/api/cache-status` includes a `typeDatabase` summary.
 
 ## Current Status
 
