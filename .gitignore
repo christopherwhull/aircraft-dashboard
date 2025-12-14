@@ -47,3 +47,5 @@ tile_cache_backup_*/
 .env
 # InfluxDB data directory
 influxdb_data/
+# OpenSky aircraft cache
+opensky_aircraft_cache.json
