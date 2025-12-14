@@ -1,6 +1,6 @@
 {
   "name": "airsquawk",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Aircraft Dashboard — Turn ADS-B data from a PiAware receiver into real-time flight intelligence and analytics for operations, monitoring, and research.",
   "main": "server.js",
   "scripts": {
