@@ -45,3 +45,5 @@ runtime/
 tile_cache_backup_*/
 # Environment variables
 .env
+# InfluxDB data directory
+influxdb_data/
