@@ -56,6 +56,8 @@ Implemented endpoints (summary):
 - GET `/api/flights` — flights listing (params: `limit`, `hours`, `airline`)
 - GET `/api/airline-stats` — airline statistics (params: `hours`)
 - GET `/api/squawk-transitions` — squawk transitions (params: `hours`, `startTime`, `endTime`)
+- GET `/api/squawk-transitions-map` — squawk transitions for map visualization (params: `hours`)
+- GET `/api/squawk-transitions-tsdb` — squawk transitions from TSDB (params: `hours`, `startTime`, `endTime`)
 - GET `/api/historical-stats` — historical aggregated stats (params: varies)
 - POST `/api/restart` — trigger server restart (auth via `Authorization` header or `X-Restart-Token`)
 - GET `/api/piaware-status` — piaware receiver status
@@ -655,14 +657,120 @@ Returns statistics about heatmap generation performance and cache hit/miss count
 ---
 
 ### GET `/api/squawk`
-Compact listing of currently observed squawk codes with counts.
+Returns the most recent squawk code for a specific aircraft.
+
+**Parameters:**
+- `hex` (string, required): Aircraft ICAO24 identifier
 
 **Response:**
 ```json
 {
-  "1234": 12,
-  "7000": 5,
-  "1200": 2
+  "squawk": "1234"
+}
+```
+
+---
+
+### GET `/api/flight`
+Returns basic flight information for a specific aircraft.
+
+**Parameters:**
+- `icao` (string, required): Aircraft ICAO24 identifier
+
+**Response:**
+```json
+{
+  "flight": {
+    "icao": "A1B2C3",
+    "flight": "AAL123",
+    "callsign": "AAL123",
+    "registration": "N123AA",
+    "squawk": "1234",
+    "lat": 40.7128,
+    "lon": -74.0060,
+    "alt": 35000,
+    "gs": 500,
+    "track": 270,
+    "timestamp": 1700000000000
+  }
+}
+```
+
+---
+
+### GET `/api/track`
+Returns historical track points for an aircraft with vertical rate information.
+
+**Parameters:**
+- `hex` (string, required): Aircraft ICAO24 identifier
+- `minutes` (number, optional): Minutes to look back (default: 10)
+
+**Response:**
+```json
+{
+  "track": [
+    {
+      "lat": 40.7128,
+      "lon": -74.0060,
+      "alt": 35000,
+      "timestamp": 1700000000000,
+      "vertical_rate": 1200
+    }
+  ]
+}
+```
+
+**Fields:**
+- `vertical_rate`: Vertical speed in feet per minute (positive = climbing, negative = descending)
+- Used by frontend for color-coded track segments: red (descending), green (climbing), yellow (level)
+
+---
+
+### GET `/api/squawk-transitions-map`
+Returns squawk transitions data formatted for map visualization.
+
+**Parameters:**
+- `hours` (number, optional): Hours to look back (default: 0.1667, approximately 10 minutes)
+
+**Response:**
+```json
+{
+  "transitions": [
+    {
+      "hex": "A1B2C3",
+      "from_squawk": "1200",
+      "to_squawk": "1234",
+      "timestamp": 1700000000000,
+      "lat": 40.7128,
+      "lon": -74.0060,
+      "altitude": 15000
+    }
+  ]
+}
+```
+
+---
+
+### GET `/api/squawk-transitions-tsdb`
+Returns squawk transitions data from TSDB (InfluxDB) storage.
+
+**Parameters:**
+- `hours` (number, optional): Hours to look back (default: 0.1667, approximately 10 minutes)
+- `startTime` (number, optional): Start timestamp in milliseconds
+- `endTime` (number, optional): End timestamp in milliseconds
+
+**Response:**
+```json
+{
+  "transitions": [
+    {
+      "hex": "A1B2C3",
+      "from_squawk": "1200",
+      "to_squawk": "1234",
+      "timestamp": 1700000000000,
+      "altitude": 15000
+    }
+  ]
 }
 ```
 
@@ -720,3 +828,9 @@ Real-time updates are available via WebSocket connections for live position data
   - Improved track change indicators
   - Mandatory long tracks with 15-second updates
   - Squawk transitions default changed to 10 minutes
+- **v1.5**: Added track and flight lookup endpoints:
+  - `/api/track` - Historical track points with vertical rate data
+  - `/api/flight` - Lightweight flight information for polling
+  - `/api/squawk` - Individual aircraft squawk lookup
+  - `/api/squawk-transitions-map` - Map-formatted squawk transitions
+  - `/api/squawk-transitions-tsdb` - TSDB-backed squawk transitions

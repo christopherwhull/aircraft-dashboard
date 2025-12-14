@@ -100,6 +100,26 @@ class ConfigLoader {
     return this.get('data');
   }
 
+  get s3() {
+    return this.get('s3');
+  }
+
+  get buckets() {
+    return this.get('buckets');
+  }
+
+  get tsdb() {
+    return this.get('tsdb');
+  }
+
+  get state() {
+    return this.get('state');
+  }
+
+  get retention() {
+    return this.get('retention');
+  }
+
   get logging() {
     return this.get('logging');
   }

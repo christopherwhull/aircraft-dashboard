@@ -876,16 +876,44 @@ function drawHistoricalStatsChart(data) {
 }
 
 
-// --- Socket.IO Handlers ---
-socket.on('connect', () => {
-    document.getElementById('connection-status').textContent = '● Connected';
-    document.getElementById('connection-status').className = 'status-connected';
-});
+// --- Logo Cache Management ---
+// Enhanced logo cache to prevent duplicate HTTP requests
+if (!window._logoCache) {
+    window._logoCache = new Map();
+}
 
-socket.on('disconnect', () => {
-    document.getElementById('connection-status').textContent = '● Disconnected';
-    document.getElementById('connection-status').className = 'status-disconnected';
-});
+// Check if a logo URL has been loaded recently (within 1 hour)
+function isLogoRecentlyLoaded(url) {
+    const cached = window._logoCache.get(url);
+    if (!cached) return false;
+
+    const now = Date.now();
+    const oneHour = 3600000; // 1 hour in milliseconds
+    return (now - cached.timestamp) < oneHour;
+}
+
+// Mark a logo URL as loaded
+function markLogoAsLoaded(url) {
+    window._logoCache.set(url, { timestamp: Date.now() });
+}
+
+// Clean up expired logo cache entries to prevent memory leaks
+function cleanupExpiredLogoCache() {
+    const now = Date.now();
+    const oneHour = 3600000; // 1 hour in milliseconds
+    let cleaned = 0;
+
+    for (const [url, cached] of window._logoCache.entries()) {
+        if ((now - cached.timestamp) > oneHour) {
+            window._logoCache.delete(url);
+            cleaned++;
+        }
+    }
+
+    if (cleaned > 0) {
+        console.debug(`Cleaned up ${cleaned} expired logo cache entries`);
+    }
+}
 
 // More granular connection/error handlers to help debugging connectivity
 socket.on('connect_error', (err) => {
@@ -933,6 +961,7 @@ socket.on('liveUpdate', (data) => {
 function updateLiveStats(data) {
     document.getElementById('tracking-count').textContent = data.trackingCount;
     document.getElementById('position-total').textContent = data.runningPositionCount;
+    document.getElementById('receiver-count').textContent = data.receiverCount || 0;
     // Expose receiver position for slant range calculation
     if (typeof data.receiver_lat === 'number' && typeof data.receiver_lon === 'number') {
         window.receiver_lat = data.receiver_lat;
@@ -1023,12 +1052,20 @@ function updateAirlineDBIndicator() {
 
 function updateAircraftTable(aircraft) {
     const tableBody = document.getElementById('aircraft-table-body');
-    
-    // Save current sort state before clearing table
+
+    // Save current sort state before updating table
     const table = tableBody.closest('table');
     saveTableSortState(table);
-    
-    tableBody.innerHTML = '';
+
+    // Build a map of existing rows keyed by hex so we can reuse nodes and avoid blinking
+    const existingAircraftRows = new Map();
+    const rows = tableBody.querySelectorAll('tr');
+    rows.forEach(r => {
+        if (r.dataset && r.dataset.hex) {
+            existingAircraftRows.set(r.dataset.hex, r);
+        }
+    });
+
     if (!aircraft) return;
     
     // Load airline database once (supports window cache and localStorage persistence)
@@ -1079,8 +1116,8 @@ function updateAircraftTable(aircraft) {
                     } catch (err) {
                         console.warn('localStorage airlineDB read failed (304 fallback)', err);
                     }
-                // If we don't already have a cached copy, re-fetch with cache disabled
-                const forced = await fetch('/api/airline-database', { cache: 'no-cache' });
+                // If we don't already have a cached copy, re-fetch
+                const forced = await fetch('/api/airline-database');
                 if (forced.ok) {
                     window.airlineDB = await forced.json();
                     try { updateAirlineDBIndicator(); } catch (e) { /* ignore */ }
@@ -1097,7 +1134,18 @@ function updateAircraftTable(aircraft) {
     };
     
     aircraft.forEach(ac => {
-        const row = document.createElement('tr');
+        // Try to reuse existing row for this aircraft
+        let row = existingAircraftRows.get(ac.hex);
+        if (row) {
+            // Reuse row element, but clear its contents to avoid appending duplicate cells
+            existingAircraftRows.delete(ac.hex);
+            try { while (row.firstChild) row.removeChild(row.firstChild); } catch (e) { row.innerHTML = ''; }
+        } else {
+            // Create new row
+            row = document.createElement('tr');
+        }
+        // Set data attribute for row identification
+        row.dataset.hex = ac.hex;
         // Color vertical speed
         let vertRate = ac.baro_rate || 0;
         let vertRateDisplay = vertRate === undefined || vertRate === null ? 'N/A' : vertRate;
@@ -1157,7 +1205,30 @@ function updateAircraftTable(aircraft) {
         
         const airlineLogoCell = document.createElement('td');
         if (ac.airlineLogo) {
-            airlineLogoCell.innerHTML = `<img src="${ac.airlineLogo}" alt="${airlineName} logo" style="height: 30px; max-width: 60px; object-fit: contain;">`;
+            const logoImg = document.createElement('img');
+            logoImg.alt = `${airlineName} logo`;
+            logoImg.style.height = '30px';
+            logoImg.style.maxWidth = '60px';
+            logoImg.style.objectFit = 'contain';
+            logoImg.style.opacity = '0';
+            logoImg.style.transition = 'opacity 180ms ease-in';
+
+            if (isLogoRecentlyLoaded(ac.airlineLogo)) {
+                // Logo was loaded recently, set src directly (browser should cache)
+                logoImg.src = ac.airlineLogo;
+                logoImg.style.opacity = '1';
+            } else {
+                // First time loading this logo
+                logoImg.onload = () => {
+                    logoImg.style.opacity = '1';
+                    markLogoAsLoaded(ac.airlineLogo);
+                };
+                logoImg.onerror = () => {
+                    airlineLogoCell.textContent = '—';
+                };
+                logoImg.src = ac.airlineLogo;
+            }
+            airlineLogoCell.appendChild(logoImg);
         } else {
             airlineLogoCell.textContent = '—';
         }
@@ -1173,7 +1244,30 @@ function updateAircraftTable(aircraft) {
         
         const manufacturerLogoCell = document.createElement('td');
         if (ac.manufacturerLogo) {
-            manufacturerLogoCell.innerHTML = `<img src="${ac.manufacturerLogo}" alt="${ac.manufacturer} logo" style="height: 30px; max-width: 60px; object-fit: contain;">`;
+            const logoImg = document.createElement('img');
+            logoImg.alt = `${ac.manufacturer} logo`;
+            logoImg.style.height = '30px';
+            logoImg.style.maxWidth = '60px';
+            logoImg.style.objectFit = 'contain';
+            logoImg.style.opacity = '0';
+            logoImg.style.transition = 'opacity 180ms ease-in';
+
+            if (isLogoRecentlyLoaded(ac.manufacturerLogo)) {
+                // Logo was loaded recently, set src directly (browser should cache)
+                logoImg.src = ac.manufacturerLogo;
+                logoImg.style.opacity = '1';
+            } else {
+                // First time loading this logo
+                logoImg.onload = () => {
+                    logoImg.style.opacity = '1';
+                    markLogoAsLoaded(ac.manufacturerLogo);
+                };
+                logoImg.onerror = () => {
+                    manufacturerLogoCell.textContent = '—';
+                };
+                logoImg.src = ac.manufacturerLogo;
+            }
+            manufacturerLogoCell.appendChild(logoImg);
         } else {
             manufacturerLogoCell.textContent = '—';
         }
@@ -1231,6 +1325,9 @@ function updateAircraftTable(aircraft) {
         
         tableBody.appendChild(row);
     });
+    
+    // Remove any leftover nodes in existingAircraftRows (they were not present in current dataset)
+    existingAircraftRows.forEach((r, k) => { try { r.remove(); } catch (e) {} });
     
     // Restore sort state after populating table
     restoreTableSortState(table);
@@ -1419,7 +1516,30 @@ async function loadAirlineStats(hoursBack = null) {
                 const logoCell = document.createElement('td');
                 logoCell.className = 'logo-cell';
                 if (airline.logo) {
-                    logoCell.innerHTML = `<img src="${airline.logo}" alt="${airline.name} logo" style="height: 30px; max-width: 60px; object-fit: contain;">`;
+                    const logoImg = document.createElement('img');
+                    logoImg.alt = `${airline.name} logo`;
+                    logoImg.style.height = '30px';
+                    logoImg.style.maxWidth = '60px';
+                    logoImg.style.objectFit = 'contain';
+                    logoImg.style.opacity = '0';
+                    logoImg.style.transition = 'opacity 180ms ease-in';
+
+                    if (isLogoRecentlyLoaded(airline.logo)) {
+                        // Logo was loaded recently, set src directly (browser should cache)
+                        logoImg.src = airline.logo;
+                        logoImg.style.opacity = '1';
+                    } else {
+                        // First time loading this logo
+                        logoImg.onload = () => {
+                            logoImg.style.opacity = '1';
+                            markLogoAsLoaded(airline.logo);
+                        };
+                        logoImg.onerror = () => {
+                            logoCell.textContent = '—';
+                        };
+                        logoImg.src = airline.logo;
+                    }
+                    logoCell.appendChild(logoImg);
                 } else {
                     logoCell.textContent = '—';
                 }
@@ -1462,7 +1582,32 @@ async function loadAirlineStats(hoursBack = null) {
                 const topManuLogoCell = document.createElement('td');
                 topManuLogoCell.className = 'logo-cell';
                 if (airline.topManufacturerLogo) {
-                    topManuLogoCell.innerHTML = `<img src="${airline.topManufacturerLogo}" alt="${airline.topManufacturer} logo" style="height: 30px; max-width: 60px; object-fit: contain; margin-right: 8px;" onerror="this.style.display='none';">`;
+                    const logoImg = document.createElement('img');
+                    logoImg.alt = `${airline.topManufacturer} logo`;
+                    logoImg.style.height = '30px';
+                    logoImg.style.maxWidth = '60px';
+                    logoImg.style.objectFit = 'contain';
+                    logoImg.style.marginRight = '8px';
+                    logoImg.style.opacity = '0';
+                    logoImg.style.transition = 'opacity 180ms ease-in';
+                    logoImg.onerror = function() { this.style.display = 'none'; };
+
+                    if (isLogoRecentlyLoaded(airline.topManufacturerLogo)) {
+                        // Logo was loaded recently, set src directly (browser should cache)
+                        logoImg.src = airline.topManufacturerLogo;
+                        logoImg.style.opacity = '1';
+                    } else {
+                        // First time loading this logo
+                        logoImg.onload = () => {
+                            logoImg.style.opacity = '1';
+                            markLogoAsLoaded(airline.topManufacturerLogo);
+                        };
+                        logoImg.onerror = () => {
+                            // Logo will be hidden by onerror handler
+                        };
+                        logoImg.src = airline.topManufacturerLogo;
+                    }
+                    topManuLogoCell.appendChild(logoImg);
                 } else {
                     topManuLogoCell.textContent = '';
                 }
@@ -3515,8 +3660,6 @@ async function loadFlights(hoursBack = null) {
                 logoSrc = `/api/v2logos/${encodeURIComponent(code)}`;
             }
 
-            // Ensure a global cache of preloaded logo images so we can reuse them across re-renders
-            if (!window._logoImgCache) window._logoImgCache = {};
             // Build row elements to allow graceful image preload/fade-in and avoid layout blinks
             const hexCell = document.createElement('td'); hexCell.textContent = fl.icao || '';
             const callsignCell = document.createElement('td'); callsignCell.textContent = fl.callsign || '';
@@ -3525,13 +3668,7 @@ async function loadFlights(hoursBack = null) {
             const airlineLogoCell = document.createElement('td');
             // Create an image element but don't set src until it is preloaded so we don't flash
             if (logoSrc) {
-                let logoImg = null;
-                // If we have a cached loaded image element for this logoSrc, clone it and reuse (fast, prevents blinking)
-                if (window._logoImgCache[logoSrc] && window._logoImgCache[logoSrc].src) {
-                    try { logoImg = window._logoImgCache[logoSrc].cloneNode(true); logoImg.style.opacity = '1'; } catch(e) { logoImg = null; }
-                }
-                if (!logoImg) {
-                    logoImg = document.createElement('img');
+                const logoImg = document.createElement('img');
                 logoImg.alt = `${(fl.airline_name || fl.airline_code) + ' logo'}`;
                 logoImg.style.height = '30px';
                 logoImg.style.maxWidth = '60px';
@@ -3540,20 +3677,22 @@ async function loadFlights(hoursBack = null) {
                 logoImg.style.transition = 'opacity 180ms ease-in';
                 logoImg.width = 60;
                 logoImg.height = 30;
-                // Preload and attach on success so the DOM doesn't show a broken or empty image first
-                    const pre = new Image();
-                    pre.onload = () => {
-                        logoImg.src = logoSrc;
-                    // Force a small delay so the browser has layout-ready before fade-in
-                    setTimeout(() => { logoImg.style.opacity = '1'; }, 10);
-                        // Store a clone into cache for subsequent reuse
-                        try { window._logoImgCache[logoSrc] = logoImg.cloneNode(true); } catch(e) {}
-                };
-                pre.onerror = () => {
-                    // If it fails, show a placeholder instead of leaving a broken image
-                    airlineLogoCell.textContent = '—';
-                };
-                    pre.src = logoSrc;
+
+                if (isLogoRecentlyLoaded(logoSrc)) {
+                    // Logo was loaded recently, set src directly (browser should cache)
+                    logoImg.src = logoSrc;
+                    logoImg.style.opacity = '1';
+                } else {
+                    // First time loading this logo
+                    logoImg.onload = () => {
+                        logoImg.style.opacity = '1';
+                        markLogoAsLoaded(logoSrc);
+                    };
+                    logoImg.onerror = () => {
+                        // If it fails, show a placeholder instead of leaving a broken image
+                        airlineLogoCell.textContent = '—';
+                    };
+                    logoImg.src = logoSrc;
                 }
                 airlineLogoCell.appendChild(logoImg);
             } else {
@@ -3564,12 +3703,30 @@ async function loadFlights(hoursBack = null) {
             const manufacturerCell = document.createElement('td'); manufacturerCell.textContent = fl.manufacturer || '';
             const manufacturerLogoCell = document.createElement('td');
             if (fl.manufacturerLogo) {
-                const mImg = document.createElement('img');
-                mImg.alt = `${(fl.manufacturer || '') + ' logo'}`;
-                mImg.style.height = '30px'; mImg.style.maxWidth = '60px'; mImg.style.objectFit = 'contain';
-                // Set directly; manufacturer logos are typically static and cached
-                mImg.src = fl.manufacturerLogo;
-                manufacturerLogoCell.appendChild(mImg);
+                const logoImg = document.createElement('img');
+                logoImg.alt = `${(fl.manufacturer || '') + ' logo'}`;
+                logoImg.style.height = '30px';
+                logoImg.style.maxWidth = '60px';
+                logoImg.style.objectFit = 'contain';
+                logoImg.style.opacity = '0';
+                logoImg.style.transition = 'opacity 180ms ease-in';
+
+                if (isLogoRecentlyLoaded(fl.manufacturerLogo)) {
+                    // Logo was loaded recently, set src directly (browser should cache)
+                    logoImg.src = fl.manufacturerLogo;
+                    logoImg.style.opacity = '1';
+                } else {
+                    // First time loading this logo
+                    logoImg.onload = () => {
+                        logoImg.style.opacity = '1';
+                        markLogoAsLoaded(fl.manufacturerLogo);
+                    };
+                    logoImg.onerror = () => {
+                        manufacturerLogoCell.textContent = '—';
+                    };
+                    logoImg.src = fl.manufacturerLogo;
+                }
+                manufacturerLogoCell.appendChild(logoImg);
             } else {
                 manufacturerLogoCell.textContent = '—';
             }
@@ -3984,7 +4141,7 @@ async function loadHeatmap() {
         positionsElem.textContent = 'Loading...';
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
-        const timeWindow = document.getElementById('heatmap-window').value;
+        const timeWindow = document.getElementById('time-window').value;
         const airline = document.getElementById('heatmap-airline').value;
         const type = document.getElementById('heatmap-type').value;
         const manufacturer = document.getElementById('heatmap-manufacturer').value;
@@ -4201,7 +4358,7 @@ window.addEventListener('DOMContentLoaded', () => {
     setInterval(loadCacheStatus, 30000);
     
     // Add event listeners for dropdown changes to auto-load heatmap
-    const dropdowns = ['heatmap-window', 'heatmap-airline', 'heatmap-type', 'heatmap-manufacturer'];
+    const dropdowns = ['time-window', 'heatmap-airline', 'heatmap-type', 'heatmap-manufacturer'];
     dropdowns.forEach(id => {
         const elem = document.getElementById(id);
         if (elem) {
