@@ -35,6 +35,31 @@ npm install
 
 ---
 
+## PM2 Quick Start (Recommended)
+
+For production deployment with process management, monitoring, and clustering:
+
+```bash
+# Install PM2 (one-time)
+npm install -g pm2
+
+# Start all services (aircraft-dashboard, websocket-server, tile-proxy-server)
+npm run start:pm2
+
+# Check status
+npm run status:pm2
+
+# View logs
+npm run logs:pm2
+
+# Monitor processes
+npm run monit:pm2
+```
+
+See [PM2_GUIDE.md](PM2_GUIDE.md) for comprehensive PM2 documentation.
+
+---
+
 ## Requirements
 
 - **PiAware Server** - Running and accessible on your local network (provides ADS-B data)
@@ -47,6 +72,8 @@ npm install
 - **`server.js`** - Main Node.js web server
 - **`config.json`** - Centralized configuration file
 - **`api-routes.js`** - API endpoint definitions
+- **`ecosystem.config.js`** - PM2 process management configuration
+- **`PM2_GUIDE.md`** - Comprehensive PM2 process management guide
 - **`tools/`** - Utility scripts for data analysis, testing, and maintenance (see `tools/README.md`)
  - **`docs/leaflet-test-plan.md`** - The Leaflet heatmap Puppeteer test plan and artifacts documentation (see `docs/leaflet-test-plan.md`)
 - **`logo-tools/`** - Logo management and download utilities
@@ -129,6 +156,237 @@ When updating the server with new code, follow these steps to ensure a smooth tr
      by other tooling on your machine. To manage MinIO explicitly pass the
      `--force-minio` flag (or the deprecated `--manage-minio` alias). See
      `tools/README.md` for details and examples.
+
+## Scaling and Performance
+
+The application supports multiple approaches to utilize multiple CPU cores for better performance and concurrency:
+
+### PM2 Process Management (Recommended)
+
+PM2 is a production process manager for Node.js applications that provides advanced features like clustering, monitoring, log management, and zero-downtime reloads.
+
+#### Installation
+
+```bash
+# Install PM2 globally (one-time setup)
+npm install -g pm2
+
+# Verify installation
+pm2 --version
+```
+
+#### Current Architecture
+
+The application uses a multi-service architecture managed by PM2:
+
+- **aircraft-dashboard**: Main web server (4 instances for load balancing)
+- **websocket-server**: Real-time WebSocket server for live updates (1 instance)
+- **tile-proxy-server**: Aviation chart tile caching proxy (1 instance)
+
+#### Starting Services
+
+```bash
+# Start all services defined in ecosystem.config.js
+npm run start:pm2
+# or directly:
+pm2 start ecosystem.config.js
+
+# Start individual services
+pm2 start ecosystem.config.js --only aircraft-dashboard
+pm2 start ecosystem.config.js --only websocket-server
+pm2 start ecosystem.config.js --only tile-proxy-server
+```
+
+#### Service Management
+
+```bash
+# Check status of all services
+npm run status:pm2
+# or:
+pm2 list
+pm2 status
+
+# View detailed process information
+pm2 show aircraft-dashboard
+pm2 show websocket-server
+pm2 show tile-proxy-server
+
+# Restart all services
+npm run restart:pm2
+pm2 restart ecosystem.config.js
+
+# Restart individual services
+pm2 restart aircraft-dashboard
+pm2 restart websocket-server
+pm2 restart tile-proxy-server
+
+# Stop all services
+npm run stop:pm2
+pm2 stop ecosystem.config.js
+
+# Stop individual services
+pm2 stop aircraft-dashboard
+pm2 stop websocket-server
+pm2 stop tile-proxy-server
+
+# Delete services (removes from PM2 management)
+pm2 delete ecosystem.config.js
+pm2 delete aircraft-dashboard websocket-server tile-proxy-server
+```
+
+#### Monitoring & Logs
+
+```bash
+# Real-time monitoring dashboard
+npm run monit:pm2
+pm2 monit
+
+# View logs for all services
+npm run logs:pm2
+pm2 logs
+
+# View logs for specific service
+pm2 logs aircraft-dashboard
+pm2 logs websocket-server
+pm2 logs tile-proxy-server
+
+# View logs with follow (tail -f style)
+pm2 logs --lines 100 --follow
+
+# Export logs to file
+pm2 logs > pm2_logs.txt
+```
+
+#### Troubleshooting
+
+```bash
+# Check if services are running
+pm2 list
+
+# View error logs specifically
+pm2 logs --err
+
+# Restart failed services
+pm2 restart all
+
+# Reset PM2 (clear all processes)
+pm2 kill
+pm2 start ecosystem.config.js
+
+# Check resource usage
+pm2 monit
+
+# View process details
+pm2 describe aircraft-dashboard
+```
+
+#### Configuration
+
+The PM2 configuration is defined in `ecosystem.config.js`:
+
+- **Instances**: aircraft-dashboard runs 4 instances for optimal performance
+- **Memory Limits**: Automatic restart if memory exceeds thresholds
+- **Logging**: Separate log files for each service in `./logs/` directory
+- **Environment**: Production/development environment variables
+- **Auto-restart**: Disabled for manual control (set `autorestart: true` for production)
+
+#### Production Deployment
+
+```bash
+# Save current PM2 configuration
+pm2 save
+
+# Generate startup script for system boot
+pm2 startup
+# Follow the generated instructions to enable auto-start
+
+# Check PM2 is running after reboot
+pm2 list
+pm2 logs
+```
+
+#### Performance Tuning
+
+```bash
+# Adjust instance count based on server resources
+pm2 scale aircraft-dashboard 2  # Reduce to 2 instances
+pm2 scale aircraft-dashboard 8  # Increase to 8 instances
+
+# Monitor CPU and memory usage
+pm2 monit
+
+# View resource usage summary
+pm2 list
+```
+
+### PM2 Clustering (Legacy)
+
+### Built-in Cluster Module
+
+For environments without PM2, use the built-in Node.js cluster module:
+
+```bash
+# Start with clustering (uses all CPU cores)
+npm run start:cluster
+
+# Development mode
+npm run start:cluster:dev
+```
+
+### Manual Cluster Control
+
+You can also control the number of worker processes:
+
+```bash
+# Start PM2 with specific instance count
+npx pm2 start ecosystem.config.js -i 4  # Use 4 cores
+npx pm2 start ecosystem.config.js -i 0  # Use all cores
+
+# Start cluster with environment variable
+NODE_ENV=production INSTANCES=4 node server-cluster.js
+```
+
+### Performance Benefits
+
+- **Concurrency**: Handle more simultaneous API requests
+- **Fault Tolerance**: If one worker crashes, others continue serving requests
+- **Load Distribution**: Requests are automatically load-balanced across workers
+- **Resource Utilization**: Better use of multi-core systems
+- **Background Job Safety**: Only the master process runs background jobs that write to TSDB and S3, preventing conflicts
+
+### Monitoring
+
+```bash
+# PM2 monitoring
+npx pm2 monit
+
+# Check cluster status
+npx pm2 jlist
+
+# View logs for specific worker
+npx pm2 logs aircraft-dashboard --lines 100
+```
+
+### Background Jobs in Cluster Mode
+
+When running in cluster mode (either with PM2 or built-in clustering), background jobs that write to TSDB and S3 are **only executed by the master process**. This prevents:
+
+- Race conditions when multiple workers try to write the same data
+- Data corruption from concurrent database operations
+- Duplicate or conflicting S3 uploads
+
+**Background jobs that run only in master:**
+- Aircraft data aggregation and saving to TSDB/S3
+- Flight building from S3 data
+- Hourly position processing
+- Historical data rollup operations
+
+**What runs in all workers:**
+- HTTP request handling (API endpoints)
+- WebSocket connections
+- In-memory caching operations
+
+This ensures data integrity while maximizing request handling performance.
 
 ## Installation
 

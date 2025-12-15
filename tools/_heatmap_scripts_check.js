@@ -305,7 +305,7 @@
         const squawkCache = new Map();
         // Batch polling controls
         let batchPollIntervalId = null;
-        const BATCH_POLL_INTERVAL_MS = 5000; // default 5s between batch polls
+        const BATCH_POLL_INTERVAL_MS = 10000; // increased from 5s to 10s to reduce server load
         const BATCH_MAX_PER_REQUEST = 50; // max items per batch request
         let batchPollInFlight = false;
         // Cache aircraft info fetched from server (/api/aircraft/:icao24)

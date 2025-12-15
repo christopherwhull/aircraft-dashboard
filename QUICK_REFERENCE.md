@@ -41,6 +41,32 @@ python start_server.py -m
 python start_server.py --no-kill
 ```
 
+### PM2 Process Management (Production)
+```bash
+# Install PM2 (one-time)
+npm install -g pm2
+
+# Start all services
+npm run start:pm2
+
+# Check status
+npm run status:pm2
+
+# View logs
+npm run logs:pm2
+
+# Monitor processes
+npm run monit:pm2
+
+# Restart services
+npm run restart:pm2
+
+# Stop all services
+npm run stop:pm2
+```
+
+See [PM2_GUIDE.md](../PM2_GUIDE.md) for comprehensive PM2 documentation.
+
 ## Script Descriptions
 
 | Script | Purpose | Time | Output |

@@ -2,6 +2,17 @@
 
 All notable changes to the Aircraft Dashboard project will be documented in this file.
 
+## [2.1.1] - 2025-12-14
+
+### Fixed
+- **Heatmap Grid Data Loading**: Fixed "hours is not defined" JavaScript error in heatmap-leaflet.html that prevented grid data from loading
+- **API Parameter Handling**: Improved parameter validation and fallback logic in loadGridData function for hours, source, and gridSizeNm parameters
+
+### Technical Details
+- **Variable Definition**: Properly defined hours, source, and gridSizeNm variables in loadGridData function
+- **Parameter Priority**: Implemented proper parameter precedence: URL params → UI controls → sensible defaults
+- **Error Prevention**: Added windowToHours helper function to convert UI time windows to API-compatible hour values
+
 ## [2.1.0] - 2025-12-06
 
 ### Added

@@ -219,10 +219,10 @@
         </div>
         <div style="margin-bottom: 20px; color:#bdbdbd">Using timescale: <span id="positions-timescale-indicator">24h</span></div>
         
-        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px;">
-            <!-- Memory Stats Card -->
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px;">
+            <!-- Live Memory Stats Card -->
             <div onclick="switchPositionDataSource('memory')" style="padding: 20px; background: #1e1e1e; border-radius: 8px; border: 2px solid #4caf50; cursor: pointer; transition: all 0.3s ease;">
-                <h3 style="margin: 0 0 15px 0; color: #4caf50; font-size: 18px;">📊 Live Memory</h3>
+                <h3 style="margin: 0 0 15px 0; color: #4caf50; font-size: 18px;">🧠 Live Memory</h3>
                 <div id="memory-stats" style="color: #e0e0e0; font-size: 14px; line-height: 1.8;">
                     <div><strong>Positions:</strong> <span id="memory-positions">-</span></div>
                     <div><strong>Aircraft:</strong> <span id="memory-aircraft">-</span></div>
@@ -231,25 +231,36 @@
                 </div>
             </div>
             
-            <!-- Cache Stats Card -->
-            <div onclick="switchPositionDataSource('cache')" style="padding: 20px; background: #1e1e1e; border-radius: 8px; border: 2px solid #2196f3; cursor: pointer; transition: all 0.3s ease;">
-                <h3 style="margin: 0 0 15px 0; color: #2196f3; font-size: 18px;">💾 Cache</h3>
-                <div id="cache-stats" style="color: #e0e0e0; font-size: 14px; line-height: 1.8;">
-                    <div><strong>Positions:</strong> <span id="cache-positions">-</span></div>
-                    <div><strong>Aircraft:</strong> <span id="cache-aircraft">-</span></div>
-                    <div><strong>Flights:</strong> <span id="cache-flights">-</span></div>
-                    <div><strong>Airlines:</strong> <span id="cache-airlines">-</span></div>
+            <!-- SQLite Cache Stats Card -->
+            <div onclick="switchPositionDataSource('sqlite')" style="padding: 20px; background: #1e1e1e; border-radius: 8px; border: 2px solid #2196f3; cursor: pointer; transition: all 0.3s ease;">
+                <h3 style="margin: 0 0 15px 0; color: #2196f3; font-size: 18px;">💾 SQLite</h3>
+                <div id="sqlite-stats" style="color: #e0e0e0; font-size: 14px; line-height: 1.8;">
+                    <div><strong>Positions:</strong> <span id="sqlite-positions">-</span></div>
+                    <div><strong>Aircraft:</strong> <span id="sqlite-aircraft">-</span></div>
+                    <div><strong>Flights:</strong> <span id="sqlite-flights">-</span></div>
+                    <div><strong>Airlines:</strong> <span id="sqlite-airlines">-</span></div>
+                </div>
+            </div>
+            
+            <!-- TSDB Stats Card -->
+            <div onclick="switchPositionDataSource('tsdb')" style="padding: 20px; background: #1e1e1e; border-radius: 8px; border: 2px solid #9c27b0; cursor: pointer; transition: all 0.3s ease;">
+                <h3 style="margin: 0 0 15px 0; color: #9c27b0; font-size: 18px;">⏱️ TSDB</h3>
+                <div id="tsdb-stats" style="color: #e0e0e0; font-size: 14px; line-height: 1.8;">
+                    <div><strong>Positions:</strong> <span id="tsdb-positions">-</span></div>
+                    <div><strong>Aircraft:</strong> <span id="tsdb-aircraft">-</span></div>
+                    <div><strong>Flights:</strong> <span id="tsdb-flights">-</span></div>
+                    <div><strong>Airlines:</strong> <span id="tsdb-airlines">-</span></div>
                 </div>
             </div>
             
             <!-- S3 Buckets Stats Card -->
             <div onclick="switchPositionDataSource('s3')" style="padding: 20px; background: #1e1e1e; border-radius: 8px; border: 2px solid #ff9800; cursor: pointer; transition: all 0.3s ease;">
-                <h3 style="margin: 0 0 15px 0; color: #ff9800; font-size: 18px;">☁️ S3 Buckets</h3>
-                <div id="bucket-stats" style="color: #e0e0e0; font-size: 14px; line-height: 1.8;">
-                    <div><strong>Positions:</strong> <span id="bucket-positions">-</span></div>
-                    <div><strong>Aircraft:</strong> <span id="bucket-aircraft">-</span></div>
-                    <div><strong>Flights:</strong> <span id="bucket-flights">-</span></div>
-                    <div><strong>Airlines:</strong> <span id="bucket-airlines">-</span></div>
+                <h3 style="margin: 0 0 15px 0; color: #ff9800; font-size: 18px;">☁️ S3</h3>
+                <div id="s3-stats" style="color: #e0e0e0; font-size: 14px; line-height: 1.8;">
+                    <div><strong>Positions:</strong> <span id="s3-positions">-</span></div>
+                    <div><strong>Aircraft:</strong> <span id="s3-aircraft">-</span></div>
+                    <div><strong>Flights:</strong> <span id="s3-flights">-</span></div>
+                    <div><strong>Airlines:</strong> <span id="s3-airlines">-</span></div>
                 </div>
             </div>
         </div>
@@ -405,7 +416,7 @@
         </div>
     </div>
 
-    <script src="/socket.io/socket.io.js"></script>
+    <script src="http://localhost:3003/socket.io/socket.io.js"></script>
     <script src="app.js"></script>
     <style>
     /* Hide refresh buttons by default; script will unhide ones with handlers */

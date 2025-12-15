@@ -88,10 +88,12 @@ If you would like, I can expand each of the above with parameter and response ex
 ---
 
 ### GET `/api/heatmap-data`
-Returns aircraft position density aggregated into a 1 nautical mile grid.
+Returns aircraft position density aggregated into a configurable grid.
 
 **Parameters:**
 - `hours` (number, optional): Hours to look back (default: 24)
+- `source` (string, optional): Data source - 'tsdb', 'memory', 'sqlite', or 's3' (default: 'tsdb')
+- `gridSizeNm` (number, optional): Grid cell size in nautical miles (default: 1.0)
 
 **Response:**
 ```json

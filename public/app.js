@@ -710,7 +710,7 @@ function draw3DReceptionPlot(sectors) {
     Plotly.newPlot(container, allTraces, layout, { responsive: true });
 }
 
-const socket = io();
+const socket = io('http://localhost:3003');
 
 // --- Server Restart Function ---
 function restartServer() {
@@ -1813,7 +1813,8 @@ function closeAirlineFlightsDrilldown() {
 // Global storage for position data sources
 let positionDataSources = {
     memory: null,
-    cache: null,
+    sqlite: null,
+    tsdb: null,
     s3: null,
     active: 'memory'
 };
@@ -1913,19 +1914,19 @@ async function loadUnifiedPositionStats(hoursBack = null) {
             hours = 24;
         }
         
-        // Fetch data from all three sources in parallel
+        // Fetch data from all four sources in parallel
         // Use startTime/endTime if available, otherwise fall back to hours
-        const [memoryResp, cacheResp, airlineResp, flightsResp] = await Promise.all([
+        const [memoryResp, sqliteResp, tsdbResp, s3Resp] = await Promise.all([
             fetch(`/api/position-timeseries-live?startTime=${startTime}&endTime=${endTime}&resolution=15`),
-            fetch('/api/cache-status'),
-            fetch(`/api/airline-stats?window=${hours}h`),
-            fetch(`/api/flights?window=${hours}h`)
+            fetch(`/api/positions?hours=${hours}&source=sqlite`),
+            fetch(`/api/positions?hours=${hours}&source=tsdb`),
+            fetch('/api/v2/cache-status')
         ]);
         
         const memoryData = await memoryResp.json();
-        const cacheData = await cacheResp.json();
-        const airlineData = await airlineResp.json();
-        const flightsData = await flightsResp.json();
+        const sqliteData = await sqliteResp.json();
+        const tsdbData = await tsdbResp.json();
+        const s3Data = await s3Resp.json();
         
         // === MEMORY STATS (from live timeseries) ===
         let memoryPositions = 0, memoryAircraft = new Set(), memoryFlights = new Set(), memoryAirlines = new Set();
@@ -1944,34 +1945,33 @@ async function loadUnifiedPositionStats(hoursBack = null) {
             });
         }
         
-        // === CACHE STATS (from cache status) ===
-        const cachePositions = cacheData.positionCache?.totalPositions || 0;
-        const cacheAircraft = cacheData.positionCache?.uniqueAircraft || 0;
-        const cacheFlights = cacheData.positionCache?.uniqueFlights || 0;
-        const cacheAirlines = cacheData.positionCache?.uniqueAirlines || 0;
-        
-        // === S3 BUCKET STATS (from airline and flight APIs) ===
-        let bucketAircraft = new Set();
-        let bucketFlights = new Set();
-        let bucketAirlines = new Set();
-        
-        // Count airlines from airline stats
-        if (airlineData.minute && airlineData.minute.byAirline) {
-            Object.keys(airlineData.minute.byAirline).forEach(airline => bucketAirlines.add(airline));
-        }
-        if (airlineData.hourly && airlineData.hourly.byAirline) {
-            Object.keys(airlineData.hourly.byAirline).forEach(airline => bucketAirlines.add(airline));
+        // === SQLITE STATS (from positions API with source=sqlite) ===
+        let sqlitePositions = 0, sqliteAircraft = new Set(), sqliteFlights = new Set(), sqliteAirlines = new Set();
+        if (Array.isArray(sqliteData)) {
+            sqlitePositions = sqliteData.length;
+            sqliteData.forEach(pos => {
+                if (pos.hex) sqliteAircraft.add(pos.hex);
+                if (pos.flight) sqliteFlights.add(pos.flight);
+                // Airlines would need to be derived from flight codes or additional data
+            });
         }
         
-        // Count flights and aircraft from flights API
-        const allFlights = [...(flightsData.active || []), ...(flightsData.flights || [])];
-        allFlights.forEach(flight => {
-            if (flight.hex) bucketAircraft.add(flight.hex);
-            if (flight.callsign) bucketFlights.add(flight.callsign);
-        });
+        // === TSDB STATS (from positions API with source=tsdb) ===
+        let tsdbPositions = 0, tsdbAircraft = new Set(), tsdbFlights = new Set(), tsdbAirlines = new Set();
+        if (Array.isArray(tsdbData)) {
+            tsdbPositions = tsdbData.length;
+            tsdbData.forEach(pos => {
+                if (pos.icao) tsdbAircraft.add(pos.icao);
+                if (pos.flight) tsdbFlights.add(pos.flight);
+                // Airlines would need to be derived from flight codes or additional data
+            });
+        }
         
-        // Estimate positions: assume average flight has 100 position reports
-        const bucketPositions = allFlights.length * 100;
+        // === S3 STATS (from cache status - represents S3-derived data) ===
+        const s3Positions = s3Data.positionCache?.totalPositions || 0;
+        const s3Aircraft = s3Data.positionCache?.uniqueAircraft || 0;
+        const s3Flights = s3Data.positionCache?.uniqueFlights || 0;
+        const s3Airlines = s3Data.positionCache?.uniqueAirlines || 0;
         
         // Update UI
         document.getElementById('memory-positions').textContent = memoryPositions.toLocaleString();
@@ -1979,28 +1979,28 @@ async function loadUnifiedPositionStats(hoursBack = null) {
         document.getElementById('memory-flights').textContent = memoryFlights.size.toLocaleString();
         document.getElementById('memory-airlines').textContent = memoryAirlines.size.toLocaleString();
         
-        document.getElementById('cache-positions').textContent = cachePositions.toLocaleString();
-        document.getElementById('cache-aircraft').textContent = cacheAircraft.toLocaleString();
-        document.getElementById('cache-flights').textContent = cacheFlights.toLocaleString();
-        document.getElementById('cache-airlines').textContent = cacheAirlines.toLocaleString();
+        document.getElementById('sqlite-positions').textContent = sqlitePositions.toLocaleString();
+        document.getElementById('sqlite-aircraft').textContent = sqliteAircraft.size.toLocaleString();
+        document.getElementById('sqlite-flights').textContent = sqliteFlights.size.toLocaleString();
+        document.getElementById('sqlite-airlines').textContent = sqliteAirlines.size.toLocaleString();
         
-        document.getElementById('bucket-positions').textContent = bucketPositions.toLocaleString();
-        document.getElementById('bucket-aircraft').textContent = bucketAircraft.size.toLocaleString();
-        document.getElementById('bucket-flights').textContent = bucketFlights.size.toLocaleString();
-        document.getElementById('bucket-airlines').textContent = bucketAirlines.size.toLocaleString();
+        document.getElementById('tsdb-positions').textContent = tsdbPositions.toLocaleString();
+        document.getElementById('tsdb-aircraft').textContent = tsdbAircraft.size.toLocaleString();
+        document.getElementById('tsdb-flights').textContent = tsdbFlights.size.toLocaleString();
+        document.getElementById('tsdb-airlines').textContent = tsdbAirlines.size.toLocaleString();
+        
+        document.getElementById('s3-positions').textContent = s3Positions.toLocaleString();
+        document.getElementById('s3-aircraft').textContent = s3Aircraft.toLocaleString();
+        document.getElementById('s3-flights').textContent = s3Flights.toLocaleString();
+        document.getElementById('s3-airlines').textContent = s3Airlines.toLocaleString();
         
         // === STORE DATA SOURCES ===
         positionDataSources.memory = memoryData;
-        positionDataSources.cache = Array.isArray(memoryData) ? memoryData.map(bucket => ({
-            ...bucket,
-            positionCount: Math.round(bucket.positionCount * (cachePositions / Math.max(memoryPositions, 1)))
-        })) : [];
+        positionDataSources.sqlite = sqliteData;
+        positionDataSources.tsdb = tsdbData;
         positionDataSources.s3 = Array.isArray(memoryData) ? memoryData.map(bucket => ({
             ...bucket,
-            positionCount: Math.round(bucket.positionCount * (bucketPositions / Math.max(memoryPositions, 1))),
-            aircraft: bucket.aircraft?.slice(0, Math.round(bucket.aircraft.length * (bucketAircraft.size / Math.max(memoryAircraft.size, 1)))),
-            flights: bucket.flights?.slice(0, Math.round(bucket.flights.length * (bucketFlights.size / Math.max(memoryFlights.size, 1)))),
-            airlines: bucket.airlines?.slice(0, Math.round(bucket.airlines.length * (bucketAirlines.size / Math.max(memoryAirlines.size, 1))))
+            positionCount: Math.round(bucket.positionCount * (s3Positions / Math.max(memoryPositions, 1)))
         })) : [];
         
         // Store current time range for graph filtering
@@ -2040,7 +2040,7 @@ async function loadUnifiedPositionStats(hoursBack = null) {
 }
 
 function switchPositionDataSource(source) {
-    if (!['memory', 'cache', 's3'].includes(source)) return;
+    if (!['memory', 'sqlite', 'tsdb', 's3'].includes(source)) return;
     positionDataSources.active = source;
     updateActiveDataSource();
     drawPositionsTimeSeriesGraph(positionDataSources[source]);
@@ -2049,16 +2049,21 @@ function switchPositionDataSource(source) {
 function updateActiveDataSource() {
     // Reset all cards to default styling by finding them through their child stats divs
     const memoryCard = document.getElementById('memory-stats')?.parentElement;
-    const cacheCard = document.getElementById('cache-stats')?.parentElement;
-    const s3Card = document.getElementById('bucket-stats')?.parentElement;
+    const sqliteCard = document.getElementById('sqlite-stats')?.parentElement;
+    const tsdbCard = document.getElementById('tsdb-stats')?.parentElement;
+    const s3Card = document.getElementById('s3-stats')?.parentElement;
     
     if (memoryCard) {
         memoryCard.style.border = positionDataSources.active === 'memory' ? '3px solid #4caf50' : '2px solid #4caf50';
         memoryCard.style.boxShadow = positionDataSources.active === 'memory' ? '0 0 15px rgba(76, 175, 80, 0.5)' : 'none';
     }
-    if (cacheCard) {
-        cacheCard.style.border = positionDataSources.active === 'cache' ? '3px solid #2196f3' : '2px solid #2196f3';
-        cacheCard.style.boxShadow = positionDataSources.active === 'cache' ? '0 0 15px rgba(33, 150, 243, 0.5)' : 'none';
+    if (sqliteCard) {
+        sqliteCard.style.border = positionDataSources.active === 'sqlite' ? '3px solid #2196f3' : '2px solid #2196f3';
+        sqliteCard.style.boxShadow = positionDataSources.active === 'sqlite' ? '0 0 15px rgba(33, 150, 243, 0.5)' : 'none';
+    }
+    if (tsdbCard) {
+        tsdbCard.style.border = positionDataSources.active === 'tsdb' ? '3px solid #9c27b0' : '2px solid #9c27b0';
+        tsdbCard.style.boxShadow = positionDataSources.active === 'tsdb' ? '0 0 15px rgba(156, 39, 176, 0.5)' : 'none';
     }
     if (s3Card) {
         s3Card.style.border = positionDataSources.active === 's3' ? '3px solid #ff9800' : '2px solid #ff9800';
@@ -2160,7 +2165,7 @@ function handleGlobalTimeSelection(hours) {
                     // Set the select's value in the top-of-page control
                     const sel = document.getElementById('time-window');
                     if (sel) sel.value = hoursToSelectVal(hours);
-                    loadHeatmap();
+                    loadHeatmap(hours);
                 } catch (e) {}
                 break;
             default:
@@ -2625,6 +2630,11 @@ async function loadPositionStatsLive() {
         const timeseries = await resp.json();
 
         const canvas = document.getElementById('position-timeseries-live-canvas');
+        if (!canvas) {
+            console.warn('Live position stats canvas not found, skipping live stats display');
+            try { hideSpinnerForTab('positions', 'Live stats canvas not available'); } catch (e) {}
+            return;
+        }
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -2843,7 +2853,7 @@ async function loadPositionStatsLive() {
 async function loadCachePositionStats() {
     try {
     try { showSpinnerForTab('cache'); } catch (e) {}
-        const resp = await fetch('/api/cache-status');
+        const resp = await fetch('/api/v2/cache-status');
         const data = await resp.json();
         
         // Get the total positions count from the cache

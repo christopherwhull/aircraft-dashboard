@@ -330,6 +330,8 @@ npm run start:pm2
 npm run restart:pm2
 ```
 
+See the main [PM2_GUIDE.md](../PM2_GUIDE.md) for comprehensive PM2 documentation including multi-service management, monitoring, and troubleshooting.
+
 Notes:
 - The `restart:auto` script runs `tools/check_and_restart_server.js` which checks server status and restarts it only when the commit SHA differs from the running server. It waits for the server to return healthy status before exiting.
 - Use `ENFORCE_GIT_CLEAN=true` if you want to fail CI when local working tree is dirty.

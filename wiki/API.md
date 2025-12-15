@@ -4,8 +4,9 @@ This page documents the most commonly used server API endpoints and their basic 
 
 ## Key endpoints
 
-- `GET /api/heatmap-data?hours=<n>`
-  - Returns a 1nm grid heatmap for the requested past `<n>` hours.
+- `GET /api/heatmap-data?hours=<n>&source=<source>&gridSizeNm=<size>`
+  - Returns a configurable grid heatmap for the requested past `<n>` hours.
+  - Parameters: `hours` (time window), `source` (data source: tsdb/memory/sqlite/s3), `gridSizeNm` (grid resolution in nautical miles)
   - Response: `{ grid: [ { lat_min, lat_max, lon_min, lon_max, count }, ... ] }`.
 
 - `GET /api/positions?hours=<n>`

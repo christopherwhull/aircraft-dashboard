@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>AIRSQUWK Dashboard</title>
+    <title>AIRSQUWK Dashboard V2</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/esri-leaflet@3.0.10/dist/esri-leaflet.js"></script>
@@ -237,16 +237,16 @@
         <div class="controls">
             <div class="control-group">
                 <div id="positions-buttons" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-                    <button class="positions-window-btn" data-hours="0.5" onclick="setTimeWindowAndLoad('30m')" title="Show last 30 minutes" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">30m</button>
-                    <button class="positions-window-btn" data-hours="1" onclick="setTimeWindowAndLoad('1h')" title="Show last 1 hour" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">1h</button>
-                    <button class="positions-window-btn" data-hours="4" onclick="setTimeWindowAndLoad('4h')" title="Show last 4 hours" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">4h</button>
-                    <button class="positions-window-btn" data-hours="6" onclick="setTimeWindowAndLoad('6h')" title="Show last 6 hours" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">6h</button>
-                    <button class="positions-window-btn" data-hours="8" onclick="setTimeWindowAndLoad('8h')" title="Show last 8 hours" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">8h</button>
-                    <button class="positions-window-btn" data-hours="12" onclick="setTimeWindowAndLoad('12h')" title="Show last 12 hours" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">12h</button>
-                    <button class="positions-window-btn" data-hours="24" onclick="setTimeWindowAndLoad('24h')" title="Show last 24 hours" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">24h</button>
-                    <button class="positions-window-btn" data-hours="168" onclick="setTimeWindowAndLoad('1w')" title="Show last 1 week" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">1w</button>
-                    <button class="positions-window-btn" data-hours="672" onclick="setTimeWindowAndLoad('4w')" title="Show last 4 weeks" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">4w</button>
-                    <button class="positions-window-btn" data-hours="all" onclick="setTimeWindowAndLoad('all')" title="Show all time" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">All</button>
+                    <button class="positions-window-btn" data-hours="0.5" onclick="(typeof handleGlobalTimeSelection === 'function' ? handleGlobalTimeSelection(0.5) : loadGridData());" title="Show last 30 minutes" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">30m</button>
+                    <button class="positions-window-btn" data-hours="1" onclick="(typeof handleGlobalTimeSelection === 'function' ? handleGlobalTimeSelection(1) : loadGridData());" title="Show last 1 hour" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">1h</button>
+                    <button class="positions-window-btn" data-hours="4" onclick="(typeof handleGlobalTimeSelection === 'function' ? handleGlobalTimeSelection(4) : loadGridData());" title="Show last 4 hours" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">4h</button>
+                    <button class="positions-window-btn" data-hours="6" onclick="(typeof handleGlobalTimeSelection === 'function' ? handleGlobalTimeSelection(6) : loadGridData());" title="Show last 6 hours" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">6h</button>
+                    <button class="positions-window-btn" data-hours="8" onclick="(typeof handleGlobalTimeSelection === 'function' ? handleGlobalTimeSelection(8) : loadGridData());" title="Show last 8 hours" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">8h</button>
+                    <button class="positions-window-btn" data-hours="12" onclick="(typeof handleGlobalTimeSelection === 'function' ? handleGlobalTimeSelection(12) : loadGridData());" title="Show last 12 hours" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">12h</button>
+                    <button class="positions-window-btn" data-hours="24" onclick="(typeof handleGlobalTimeSelection === 'function' ? handleGlobalTimeSelection(24) : loadGridData());" title="Show last 24 hours" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">24h</button>
+                    <button class="positions-window-btn" data-hours="168" onclick="(typeof handleGlobalTimeSelection === 'function' ? handleGlobalTimeSelection(168) : loadGridData());" title="Show last 1 week" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">1w</button>
+                    <button class="positions-window-btn" data-hours="672" onclick="(typeof handleGlobalTimeSelection === 'function' ? handleGlobalTimeSelection(672) : loadGridData());" title="Show last 4 weeks" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">4w</button>
+                    <button class="positions-window-btn" data-hours="all" onclick="(typeof handleGlobalTimeSelection === 'function' ? handleGlobalTimeSelection(null) : loadGridData());" title="Show all time" aria-pressed="false" tabindex="0" style="padding: 5px 10px;">All</button>
                 </div>
                 <label for="time-window">Time Window:</label>
                 <select id="time-window" aria-label="Time Window" title="Select a time window for the heatmap">
@@ -259,18 +259,6 @@
                     <option value="1w">1 Week</option>
                     <option value="4w">4 Weeks</option>
                     <option value="all">All Time</option>
-                </select>
-            </div>
-
-            <div class="control-group">
-                <label for="grid-size">Grid Size:</label>
-                <select id="grid-size" aria-label="Grid Size" title="Select grid cell size in nautical miles">
-                    <option value="0.1">0.1 nm</option>
-                    <option value="0.25">0.25 nm</option>
-                    <option value="0.5">0.5 nm</option>
-                    <option value="1.0" selected>1.0 nm</option>
-                    <option value="2.0">2.0 nm</option>
-                    <option value="5.0">5.0 nm</option>
                 </select>
             </div>
 
@@ -808,7 +796,6 @@
         function saveSettings() {
             const settings = {
                 timeWindow: document.getElementById('time-window').value,
-                gridSize: document.getElementById('grid-size').value,
                 colorMode: document.getElementById('color-mode').value,
                 scalingMode: document.getElementById('scaling-mode').value,
                 opacity: document.getElementById('opacity').value,
@@ -853,7 +840,6 @@
                 try {
                     const settings = JSON.parse(saved);
                     if (settings.timeWindow) document.getElementById('time-window').value = settings.timeWindow;
-                    if (settings.gridSize) document.getElementById('grid-size').value = settings.gridSize;
                     if (settings.colorMode) document.getElementById('color-mode').value = settings.colorMode;
                     if (settings.scalingMode) document.getElementById('scaling-mode').value = settings.scalingMode;
                     if (settings.opacity) {
@@ -1027,11 +1013,6 @@
             loadSquawkTransitionsData(); // Also reload squawk transitions for the new time range
         });
 
-        document.getElementById('grid-size').addEventListener('change', () => {
-            saveSettings();
-            loadGridData();
-        });
-
         // Live positions are always enabled now
         // document.getElementById('show-live').addEventListener('change', () => {
         //     saveSettings();
@@ -1052,7 +1033,6 @@
         // Live positions support
         let liveLayer = L.layerGroup();
         let liveIntervalId = null;
-        let isFetchingPositions = false;
         // Map of current live markers for smooth updates (hex -> L.marker)
         const liveMarkers = new Map();
         // Expose for tests and debugging: attach to window so external harnesses can access
@@ -2312,12 +2292,6 @@
         }
 
         async function fetchLivePositions() {
-            // Prevent concurrent requests
-            if (isFetchingPositions) {
-                console.log('Skipping fetchLivePositions - already in progress');
-                return;
-            }
-            isFetchingPositions = true;
             try {
                 setLiveStatus('Fetching...', 'loading');
                 const timeWindow = document.getElementById('time-window').value;
@@ -2856,8 +2830,6 @@
             } catch (err) {
                 console.warn('Failed to fetch live positions:', err);
                 setLiveStatus('Error', 'error');
-            } finally {
-                isFetchingPositions = false;
             }
         }
 
@@ -2895,12 +2867,9 @@
             // Live positions are always enabled
             const enabled = true;
             if (enabled) {
-                // Only start polling if not already active
-                if (!liveIntervalId) {
-                    // Fetch immediately and then every 1 second
-                    fetchLivePositions();
-                    liveIntervalId = setInterval(fetchLivePositions, 1000);
-                }
+                // Fetch immediately and then every 1 second
+                fetchLivePositions();
+                liveIntervalId = setInterval(fetchLivePositions, 1000);
                 // Start batch polling for visible aircraft (rate-limited)
                 try { startBatchPollingVisibleFlights(); } catch (e) { console.warn('Failed to start batch polling', e); }
                 // Start live tracks polling to draw short recent tracks for active flights
@@ -3103,18 +3072,7 @@
             return 'rgb(100, 100, 100)';
         }
 
-        // Function to set time window dropdown and load data
-        function setTimeWindowAndLoad(windowValue) {
-            const select = document.getElementById('time-window');
-            if (select) {
-                // Handle 30m case - set to 1h in dropdown but pass 30m to loadGridData
-                const displayValue = windowValue === '30m' ? '1h' : windowValue;
-                select.value = displayValue;
-                loadGridData(windowValue === '30m' ? 0.5 : null);
-            }
-        }
-
-        async function loadGridData(hoursOverride = null) {
+        async function loadGridData() {
             try {
                 showLoading(true);
                 const timeWindow = document.getElementById('time-window').value;
@@ -3145,17 +3103,10 @@
                     return 24;
                 }
 
-                // Determine hours: use override if provided, then URL param, then UI selection
-                const hours = hoursOverride !== null ? hoursOverride : 
-                             (hoursParam ? parseInt(hoursParam, 10) : windowToHours(timeWindow));
-                
-                // Determine source: use URL param or default to tsdb
-                const source = sourceParam || 'tsdb';
-
-                // Get grid size from UI control, fallback to URL parameter, then default
-                const gridSizeControl = document.getElementById('grid-size');
-                const gridSizeNm = gridSizeControl ? parseFloat(gridSizeControl.value) : 
-                                   (gridSizeParam ? parseFloat(gridSizeParam) : 1.0);
+                // Use URL parameter hours if provided, otherwise fall back to UI selection
+                const hours = hoursParam ? parseInt(hoursParam, 10) : windowToHours(timeWindow);
+                const source = sourceParam || 'tsdb'; // default to tsdb if not specified
+                const gridSizeNm = gridSizeParam ? parseFloat(gridSizeParam) : 1.0; // default to 1.0nm if not specified
 
                 // Build API URL with parameters
                 const params = new URLSearchParams({

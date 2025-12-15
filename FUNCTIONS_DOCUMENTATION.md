@@ -297,15 +297,23 @@
 - `hoursBack` (number|null): Hours to look back, or null for custom range
 
 **Grid Specifications:**
-- Cell size: 1 NM × 1 NM (approximately 0.0167° × 0.0167°)
+- Cell size: Configurable from 0.1 to 5.0 NM (approximately 0.00167° to 0.0835°)
 - Uses latitude/longitude bounding boxes
 - Each cell stores position count
+- Grid size controlled by `gridSizeNm` parameter
+
+**API Parameters:**
+- `hours`: Time window in hours (default: 24)
+- `source`: Data source ('tsdb', 'memory', 'sqlite', 's3') (default: 'tsdb')
+- `gridSizeNm`: Grid cell size in nautical miles (default: 1.0)
 
 **Information Panel:**
 - Grid cell dimensions (degrees, km, NM)
 - Total grid cells
 - Coverage area (lat/lon span)
 - Coordinate bounds
+- Data source and time window
+- Grid size configuration
 
 **Color Scale:**
 - Blue (low density) to red (high density)
@@ -409,8 +417,13 @@ Returns flight data categorized as active or no longer seen.
 
 ---
 
-#### `GET /api/heatmap-data?hours=<n>`
-Returns position density grid data.
+#### `GET /api/heatmap-data?hours=<n>&source=<source>&gridSizeNm=<size>`
+Returns position density grid data with configurable parameters.
+
+**Parameters:**
+- `hours` (number): Hours to look back (default: 24)
+- `source` (string): Data source - 'tsdb', 'memory', 'sqlite', 's3' (default: 'tsdb')
+- `gridSizeNm` (number): Grid cell size in nautical miles (default: 1.0)
 
 **Grid Structure:**
 ```json

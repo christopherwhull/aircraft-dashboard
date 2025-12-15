@@ -266,12 +266,17 @@ app.get('/tile/:layer/:z/:x/:y', async (req, res) => {
                     const existingStat = fs.statSync(cachePath);
                     const existingSize = existingMeta.size || existingStat.size;
                     
-                    // Only replace if new tile is larger (indicating it's a valid tile, not an error response)
-                    if (buffer.byteLength <= existingSize) {
-                        log(`CACHE PRESERVE: Keeping existing tile (${existingSize} bytes) - new tile is smaller (${buffer.byteLength} bytes)`);
-                        shouldCache = false;
+                    // Allow refresh if new tile is at least 2KB (2048 bytes) - indicates it's a valid tile
+                    const MIN_VALID_TILE_SIZE = 2048; // 2KB minimum for valid tiles
+                    if (buffer.byteLength >= MIN_VALID_TILE_SIZE) {
+                        if (buffer.byteLength > existingSize) {
+                            log(`CACHE REPLACE: Replacing existing tile (${existingSize} bytes) with larger new tile (${buffer.byteLength} bytes)`);
+                        } else {
+                            log(`CACHE REFRESH: Refreshing existing tile (${existingSize} bytes) with valid new tile (${buffer.byteLength} bytes)`);
+                        }
                     } else {
-                        log(`CACHE REPLACE: Replacing existing tile (${existingSize} bytes) with larger new tile (${buffer.byteLength} bytes)`);
+                        log(`CACHE PRESERVE: Keeping existing tile (${existingSize} bytes) - new tile is too small (${buffer.byteLength} bytes < ${MIN_VALID_TILE_SIZE})`);
+                        shouldCache = false;
                     }
                 }
                 

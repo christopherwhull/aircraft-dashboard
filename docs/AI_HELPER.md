@@ -145,4 +145,89 @@ Below are commonly-used server API endpoints you may ask the AI to change or use
 - `GET /api/cache-status` and `GET /api/heatmap-cache-clear`: cache inspection and clear endpoints.
 - `POST /api/restart`: CI/ops restart endpoint (requires `RESTART_API_TOKEN` configured).
 
+## PM2 Process Management
+
+The application uses PM2 for production process management with a multi-service architecture:
+
+- **aircraft-dashboard**: Main web server (4 cluster instances)
+- **websocket-server**: WebSocket server for real-time updates (1 instance)
+- **tile-proxy-server**: Aviation chart tile caching (1 instance)
+
+### PM2 Commands
+
+```powershell
+# Start all services
+pm2 start ecosystem.config.js
+
+# Check status
+pm2 list
+pm2 status
+
+# View logs
+pm2 logs
+pm2 logs aircraft-dashboard
+pm2 logs websocket-server
+pm2 logs tile-proxy-server
+
+# Monitor processes
+pm2 monit
+
+# Restart services
+pm2 restart ecosystem.config.js
+pm2 restart aircraft-dashboard
+
+# Stop services
+pm2 stop ecosystem.config.js
+pm2 delete ecosystem.config.js
+
+# Scale instances
+pm2 scale aircraft-dashboard 2
+```
+
+### Troubleshooting PM2 Issues
+
+```powershell
+# Check if services are running
+pm2 list
+
+# View error logs
+pm2 logs --err
+
+# Restart failed services
+pm2 restart all
+
+# Reset PM2 completely
+pm2 kill
+pm2 start ecosystem.config.js
+```
+
+### Current Optimized Setup
+
+The ecosystem is configured for optimal performance:
+- 4 aircraft-dashboard workers (~750MB each total)
+- 1 websocket-server (~200MB)
+- 1 tile-proxy-server (~65MB)
+- Total memory: ~486MB (vs 14GB with 20 instances)
+
 When requesting AI edits that touch API behavior, include the endpoint, expected request shape, expected response (example), and any performance constraints (e.g. avoid scanning all S3 files for high-frequency UI calls).
+
+## Heatmap Debugging & Maintenance
+
+Recent fixes and common issues:
+
+- **Grid Data Loading**: Fixed "hours is not defined" error in `loadGridData()` function - ensure `hours`, `source`, and `gridSizeNm` variables are properly defined
+- **Parameter Handling**: URL parameters take precedence over UI controls, which take precedence over defaults
+- **Grid Size Control**: UI dropdown controls grid resolution (0.1-5.0 NM), affects both performance and visual detail
+- **Data Sources**: TSDB (recent), memory (fast), SQLite (moderate), S3 (historical) - choose based on data age and performance needs
+
+Common heatmap troubleshooting commands:
+```powershell
+# Test heatmap API directly
+curl "http://localhost:3000/api/heatmap-data?hours=1&source=tsdb&gridSizeNm=1.0"
+
+# Check heatmap cache status
+curl "http://localhost:3000/api/heatmap-stats"
+
+# Clear heatmap cache if needed
+curl "http://localhost:3000/api/heatmap-cache-clear"
+```
