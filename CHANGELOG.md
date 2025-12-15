@@ -2,6 +2,18 @@
 
 All notable changes to the Aircraft Dashboard project will be documented in this file.
 
+## [2.1.2] - 2025-12-14
+
+### Added
+- **Comprehensive PM2 Documentation**: Added complete PM2 process management guide (PM2_GUIDE.md) covering multi-service architecture, monitoring, and production deployment
+- **Enhanced Documentation**: Updated README, API docs, wiki, and AI helper with PM2 commands and troubleshooting information
+- **PM2 Quick Reference**: Added PM2 commands to quick reference guide for easy access
+
+### Technical Details
+- **Multi-Service Architecture**: Documented optimized setup with 4 aircraft-dashboard workers, 1 websocket-server, and 1 tile-proxy-server
+- **Process Management**: Added comprehensive PM2 commands for starting, monitoring, and troubleshooting services
+- **Production Deployment**: Included auto-start configuration, log management, and scaling guidelines
+
 ## [2.1.1] - 2025-12-14
 
 ### Fixed
