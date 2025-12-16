@@ -64,8 +64,184 @@ See [PM2_GUIDE.md](PM2_GUIDE.md) for comprehensive PM2 documentation.
 
 - **PiAware Server** - Running and accessible on your local network (provides ADS-B data)
 - **Node.js** - Version 14 or higher
-- **MinIO S3 Storage** - For historical data storage and caching (or compatible S3 service)
+- **Data Storage** - Choose one or more: MinIO/S3, SQLite, or InfluxDB (TSDB)
 - **Python 3.x** - Optional, for utility scripts and data analysis
+
+## Installation & Setup
+
+### 1. Basic Installation
+
+```bash
+# Clone repository
+git clone https://github.com/christopherwhull/aircraft-dashboard.git
+cd aircraft-dashboard
+
+# Install Node.js dependencies
+npm install
+
+# Configure PiAware endpoint
+# Edit config.json or set environment variable
+export PIAWARE_URL=http://your-piaware:8080/data/aircraft.json
+
+# Start the server
+npm start
+```
+
+### 2. Data Storage Setup
+
+Choose your preferred data storage backend(s). You can use multiple backends simultaneously.
+
+#### Option A: MinIO/S3 Storage (Recommended for Production)
+
+MinIO provides S3-compatible object storage for historical data persistence.
+
+**Quick Docker Setup:**
+```bash
+# Start MinIO server
+docker run -d -p 9000:9000 -p 9001:9001 \
+  -e MINIO_ROOT_USER=minioadmin \
+  -e MINIO_ROOT_PASSWORD=minioadmin123 \
+  -v minio_data:/data \
+  --name minio-server \
+  minio/minio:latest server /data --console-address ":9001"
+
+# Access MinIO console at: http://localhost:9001
+# Default credentials: minioadmin / minioadmin123
+```
+
+**Configuration:**
+```json
+{
+  "s3": {
+    "endpoint": "http://localhost:9000",
+    "region": "us-east-1",
+    "credentials": {
+      "accessKeyId": "minioadmin",
+      "secretAccessKey": "minioadmin123"
+    }
+  },
+  "buckets": {
+    "readBucket": "aircraft-data",
+    "writeBucket": "aircraft-data-new"
+  }
+}
+```
+
+**Platform-Specific Setup:** See [MINIO_SETUP.md](MINIO_SETUP.md)
+
+#### Option B: SQLite Database (Simple, Local)
+
+SQLite provides local file-based storage with no external dependencies.
+
+**Configuration:**
+```json
+{
+  "sqlite": {
+    "enabled": true,
+    "databasePath": "./runtime/aircraft.db"
+  }
+}
+```
+
+**Features:**
+- No installation required
+- Single file database
+- Good for moderate datasets
+- Automatic table creation
+
+#### Option C: InfluxDB (TSDB) - Time-Series Database
+
+InfluxDB provides high-performance time-series storage for real-time analytics.
+
+**Docker Setup:**
+```bash
+# Start InfluxDB 3
+docker run -d -p 8181:8181 \
+  -v influxdb_data:/influxdb/data \
+  --name influxdb3 \
+  influxdb:3-core server \
+  --http-bind-address :8181 \
+  --grpc-bind-address :8182
+```
+
+**Configuration:**
+```json
+{
+  "tsdb": {
+    "enabled": true,
+    "type": "influxdb3",
+    "url": "http://localhost:8181",
+    "token": "your-api-token",
+    "org": "airsquawk",
+    "bucket": "aircraft_positions"
+  }
+}
+```
+
+**Token Setup:**
+```bash
+# Create API token (save to runtime/tsdb_token.json)
+python tools/aircraft-tracker.py --create-tsdb-token
+
+# Or set manually in config.json
+```
+
+**Advanced Setup:** See [REST_INFLUXDB_GUIDE.md](REST_INFLUXDB_GUIDE.md)
+
+### 3. Complete Setup with All Storage Backends
+
+For a full-featured installation with all storage options:
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Start MinIO (S3 storage)
+docker run -d -p 9000:9000 -p 9001:9001 \
+  -e MINIO_ROOT_USER=minioadmin \
+  -e MINIO_ROOT_PASSWORD=minioadmin123 \
+  -v minio_data:/data \
+  minio/minio:latest server /data --console-address ":9001"
+
+# 3. Start InfluxDB (TSDB) - Optional
+docker run -d -p 8181:8181 \
+  -v influxdb_data:/influxdb/data \
+  influxdb:3-core server \
+  --http-bind-address :8181 \
+  --grpc-bind-address :8182
+
+# 4. Configure storage backends in config.json
+# See examples above for each storage type
+
+# 5. Start the application
+npm start
+
+# 6. Start data ingestion (optional)
+python tools/aircraft-tracker.py --enable-s3 --enable-tsdb
+```
+
+### 4. Data Storage Comparison
+
+| Storage Type | Use Case | Setup Complexity | Performance | Data Retention |
+|-------------|----------|------------------|-------------|----------------|
+| **MinIO/S3** | Historical data, backups | Medium | High | Unlimited |
+| **SQLite** | Local development, small deployments | Low | Medium | Limited by disk |
+| **InfluxDB** | Real-time analytics, time-series queries | High | Very High | Configurable |
+
+### 5. Verification
+
+Test your installation:
+
+```bash
+# Check server health
+curl http://localhost:3002/api/health
+
+# Check data storage status
+curl http://localhost:3002/api/cache-status
+
+# Test heatmap data (if S3 configured)
+curl "http://localhost:3002/api/heatmap-data?hours=1&source=s3"
+```
 
 ## Project Structure
 
@@ -541,11 +717,7 @@ Ensure your PiAware server is:
 
 ## MinIO S3 Storage Setup
 
-MinIO is required for data persistence. Follow [MINIO_SETUP.md](MINIO_SETUP.md) for:
-- **Quick Start**: Docker installation (recommended)
-- **Platform-Specific**: Windows, Linux, macOS standalone installations
-- **Production**: Systemd service setup for Linux
-- **Configuration**: Bucket creation (or let the apps auto-create them)
+MinIO is required for data persistence. See the [Installation & Setup](#2-data-storage-setup) section above for complete MinIO setup instructions.
 
 **Quick Docker Start:**
 ```bash
@@ -559,6 +731,8 @@ docker run -d -p 9000:9000 -p 9001:9001 \
 Access console at: `http://localhost:9001`
 
 **Note:** Buckets are automatically created by the Node server and aircraft tracker on startup, so you may not need to manually create them.
+
+For detailed setup instructions, see [MINIO_SETUP.md](MINIO_SETUP.md).
 
 ## Usage
 
