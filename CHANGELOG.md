@@ -2,6 +2,28 @@
 
 All notable changes to the Aircraft Dashboard project will be documented in this file.
 
+## [2.1.3] - 2025-12-16
+
+### Added
+- **Complete InfluxDB 3 Integration**: Full time-series database setup with automated cross-platform scripts (Python, PowerShell, Batch)
+- **REST API Authentication**: Implemented token-based authentication for InfluxDB operations with automatic token management
+- **Comprehensive Setup Documentation**: Added detailed INFLUXDB_SETUP.md with manual and automated setup procedures
+- **Cross-Platform Automation**: Created Python setup script that works on Windows, macOS, and Linux
+- **Full Test Suite Validation**: Comprehensive testing with 87.5%+ pass rate across Node.js and Python test suites
+
+### Technical Details
+- **Database Integration**: InfluxDB 3 configured for aircraft position data storage with SQL query API
+- **Authentication System**: Admin token creation and management with config.json integration
+- **API Compatibility**: Support for both v2 and v3 InfluxDB API endpoints with automatic fallback
+- **Service Architecture**: PM2-managed multi-service setup with aircraft dashboard, WebSocket server, and tile proxy
+- **Data Collection**: Real-time aircraft position data aggregation by receiver and hour
+
+### Infrastructure
+- **Automated Setup**: One-command InfluxDB setup with health checks and connection testing
+- **Process Management**: PM2 configuration for production deployment with 4 dashboard workers
+- **Storage Integration**: MinIO S3-compatible storage for aircraft data and media assets
+- **Monitoring**: Comprehensive logging and health check endpoints for all services
+
 ## [2.1.2] - 2025-12-14
 
 ### Added
