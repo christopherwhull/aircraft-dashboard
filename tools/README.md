@@ -42,6 +42,22 @@ This directory contains all the utility scripts and tools for the AirSquawk proj
 
 ### Logo Management
 - `process-airlines.js` - Process airline data (includes logo processing)
+- `create-logo-media-pack.js` - Generate downloadable ZIP archives of all logos
+- `upload-media-pack.js` - Upload logo media packs to S3
+
+### Documentation & Wiki
+- `publish-wiki.js` - Validate and publish wiki content to GitHub Wiki
+
+Usage:
+```bash
+# Validate wiki files
+node tools/publish-wiki.js --check
+
+# Publish to GitHub Wiki (requires wiki repo to be cloned)
+node tools/publish-wiki.js
+```
+
+See [WIKI_SETUP.md](../WIKI_SETUP.md) for complete wiki setup and publishing guide.
 
 ### Testing & Validation
 - `check-latest-data.js` - Check latest data availability

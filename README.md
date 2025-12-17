@@ -704,7 +704,10 @@ Christopher Hull
 - [AIRCRAFT_TRACKER.md](AIRCRAFT_TRACKER.md) - Python tracker script documentation
 - [CROSSPLATFORM_SUMMARY.md](CROSSPLATFORM_SUMMARY.md) - Cross-platform implementation details
 - [FUNCTIONS_DOCUMENTATION.md](FUNCTIONS_DOCUMENTATION.md) - API and function reference
+- [WIKI_SETUP.md](WIKI_SETUP.md) - Guide for setting up and publishing the GitHub Wiki
 - [Project Wiki](./wiki/Home.md) - Detailed multi-page documentation and guides
+  - **Publishing**: Use `node tools/publish-wiki.js` to validate or publish wiki content to GitHub
+  - **Navigation**: Includes sidebar navigation for easy browsing
 
 ## Troubleshooting
 
