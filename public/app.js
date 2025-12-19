@@ -325,7 +325,11 @@ async function loadReceptionRange(hoursBack = null) {
             });
         
         // Aggregate by bearing (ignore altitude)
+        // Initialize all bearings from 0 to 345 (15° increments) to ensure full coverage
         const bearingData = {};
+        for (let bearing = 0; bearing < 360; bearing += 15) {
+            bearingData[bearing] = { maxRange: 0, count: 0 };
+        }
         sortedSectors.forEach(sector => {
             if (!bearingData[sector.bearing]) {
                 bearingData[sector.bearing] = { maxRange: 0, count: 0 };
@@ -711,6 +715,61 @@ function draw3DReceptionPlot(sectors) {
 }
 
 const socket = io('http://localhost:3003');
+const LIVE_FUSION_WINDOW_MS = 3000; // Keep a short window of observations for front-end fusion
+const LIVE_REFRESH_DELAY_MS = 1000;
+const liveAircraftObservations = [];
+let liveTableTimer = null;
+let liveTablePending = false;
+
+function addLiveUpdateToBuffer(data) {
+    const timestamp = Date.now();
+    const aircraft = Array.isArray(data && data.aircraft) ? data.aircraft.slice() : [];
+    liveAircraftObservations.push({ timestamp, aircraft });
+    const cutoff = timestamp - LIVE_FUSION_WINDOW_MS;
+    while (liveAircraftObservations.length > 0 && liveAircraftObservations[0].timestamp < cutoff) {
+        liveAircraftObservations.shift();
+    }
+}
+
+function getFusedAircraftSnapshot() {
+    const fusedMap = new Map();
+    liveAircraftObservations.forEach(entry => {
+        const list = Array.isArray(entry.aircraft) ? entry.aircraft : [];
+        list.forEach(ac => {
+            if (!ac || !ac.hex) return;
+            const existing = fusedMap.get(ac.hex);
+            if (!existing || entry.timestamp >= existing.ts) {
+                fusedMap.set(ac.hex, { ac, ts: entry.timestamp });
+            }
+        });
+    });
+    return Array.from(fusedMap.values()).map(item => item.ac);
+}
+
+function isLiveTabActive() {
+    const liveTab = document.getElementById('live-tab');
+    return liveTab && liveTab.classList.contains('active');
+}
+
+function updateLiveTableIfNeeded() {
+    liveTablePending = false;
+    if (!isLiveTabActive()) {
+        liveTablePending = true;
+        return;
+    }
+    const fusedAircraft = getFusedAircraftSnapshot();
+    updateAircraftTable(fusedAircraft);
+}
+
+function scheduleLiveTableUpdate() {
+    if (liveTableTimer) {
+        clearTimeout(liveTableTimer);
+    }
+    liveTableTimer = setTimeout(() => {
+        liveTableTimer = null;
+        updateLiveTableIfNeeded();
+    }, LIVE_REFRESH_DELAY_MS);
+}
 
 // --- Server Restart Function ---
 function restartServer() {
@@ -797,6 +856,13 @@ function showTab(tabName, event) {
             }
         } catch (e) {}
     } catch (e) {}
+    if (tabName === 'live' && liveTablePending) {
+        if (liveTableTimer) {
+            clearTimeout(liveTableTimer);
+            liveTableTimer = null;
+        }
+        updateLiveTableIfNeeded();
+    }
 }
 
 // Attach change/enter listeners to flights custom range inputs so that
@@ -954,7 +1020,8 @@ socket.on('connect_timeout', () => {
 
 socket.on('liveUpdate', (data) => {
     updateLiveStats(data);
-    updateAircraftTable(data.aircraft);
+    addLiveUpdateToBuffer(data);
+    scheduleLiveTableUpdate();
 });
 
 // --- UI Update Functions ---
@@ -2502,11 +2569,17 @@ function drawPositionsTimeSeriesGraph(memoryData) {
     
     // Draw X-axis labels (time)
     ctx.textAlign = 'center';
-    const numLabels = Math.min(6, dataPoints.length);
+    const totalPoints = dataPoints.length;
+    const numLabels = Math.min(6, totalPoints);
+    const labelDenominator = numLabels > 1 ? numLabels - 1 : 1;
+    const divisor = totalPoints > 1 ? totalPoints - 1 : 1;
     for (let i = 0; i < numLabels; i++) {
-        const idx = Math.floor(i * (dataPoints.length - 1) / (numLabels - 1));
-        const point = dataPoints[idx];
-        const x = padding.left + (idx / (dataPoints.length - 1)) * chartWidth;
+        const idx = Math.floor(i * (totalPoints - 1) / labelDenominator);
+        const clampedIdx = Math.max(0, Math.min(totalPoints - 1, idx));
+        const point = dataPoints[clampedIdx];
+        if (!point) continue;
+        const x = padding.left + (clampedIdx / divisor) * chartWidth;
+        if (typeof point.timestamp !== 'number') continue;
         const d = new Date(point.timestamp);
         const label = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
         ctx.fillText(label, x, canvas.height - padding.bottom + 20);

@@ -1,6 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const https = require('https');
+const { URL } = require('url');
 const express = require('express');
 const axios = require('axios');
 const morgan = require('morgan');
@@ -17,6 +19,28 @@ const PositionCache = require('./lib/position-cache');
 const aircraftDB = require('./lib/aircraft-database');
 const aircraftTypesDB = require('./lib/aircraft-types-db');
 
+function deriveReceiverIdFromUrl(url) {
+    if (!url) {
+        return 'server';
+    }
+
+    try {
+        const parsed = new URL(url);
+        const host = parsed.hostname;
+        if (!host) {
+            return 'server';
+        }
+
+        const defaultPort = parsed.protocol === 'https:' ? '443' : '80';
+        const port = parsed.port || defaultPort;
+        const sanitizedHost = host.replace(/[.:]/g, '_');
+        return `${sanitizedHost}_${port}`;
+    } catch (err) {
+        logger.warn(`[Server] Unable to derive receiver_id from ${url}: ${err.message}`);
+        return 'server';
+    }
+}
+
 const app = express();
 const server = http.createServer(app);
 
@@ -27,7 +51,11 @@ const server = http.createServer(app);
 
 // --- Load Configuration ---
 const PORT = config.server.mainPort;
-const PIAWARE_URLS = config.data.piAwareUrls;
+const PIAWARE_URLS = Array.isArray(config.data.piAwareUrls) ? config.data.piAwareUrls : [];
+const PIAWARE_RECEIVER_VERSION = '1.0';
+const PIAWARE_RECEIVER_IDS = new Map(PIAWARE_URLS.map(url => [url, deriveReceiverIdFromUrl(url)]));
+const DEFAULT_RECEIVER_ID = PIAWARE_RECEIVER_IDS.get(PIAWARE_URLS[0]) || 'server';
+logger.info(`[Server] TSDB receiver_ids: ${Array.from(PIAWARE_RECEIVER_IDS.entries()).map(([url, id]) => `${url}=>${id}`).join(', ')}`);
 const BUCKET_NAME = config.buckets.readBucket;
 const WRITE_BUCKET_NAME = config.buckets.writeBucket;
 const STATE_FILE = path.join(__dirname, config.state.stateFile);
@@ -77,6 +105,94 @@ let fetchDataWorkerId = null;
 // --- TSDB Write Counter ---
 let tsdbWriteCount = 0;
 
+const PI_AWARE_WATCHDOG_INTERVAL_MS = 10000;
+const pendingPiAwareFetches = new Map();
+const piAwareAgentPool = new Map();
+const tsdbAgentPool = new Map();
+
+function trackPiAwareFetch({ url, agent, controller, timeoutId }) {
+    const id = Symbol(url);
+    pendingPiAwareFetches.set(id, {
+        url,
+        agent,
+        controller,
+        timeoutId,
+        startedAt: Date.now()
+    });
+    return id;
+}
+
+function finalizePiAwareFetch(id) {
+    const entry = pendingPiAwareFetches.get(id);
+    if (!entry) {
+        return;
+    }
+
+    clearTimeout(entry.timeoutId);
+    pendingPiAwareFetches.delete(id);
+}
+
+function getPiAwareAgent(url) {
+    if (piAwareAgentPool.has(url)) {
+        return piAwareAgentPool.get(url);
+    }
+
+    const isHttps = url.startsWith('https://');
+    const AgentClass = isHttps ? https.Agent : http.Agent;
+    const agent = new AgentClass({
+        keepAlive: true,
+        maxSockets: 1,
+        maxFreeSockets: 1,
+        keepAliveMsecs: 30000
+    });
+
+    piAwareAgentPool.set(url, agent);
+    return agent;
+}
+
+function startPiAwareFetchWatchdog() {
+    const interval = setInterval(() => {
+        const outstanding = pendingPiAwareFetches.size;
+        if (outstanding === 0) {
+            logger.debug('[fetchData] PiAware watchdog: no outstanding connections');
+            return;
+        }
+
+        logger.warn(`[fetchData] PiAware watchdog detected ${outstanding} hung connection(s); aborting`);
+        for (const id of Array.from(pendingPiAwareFetches.keys())) {
+            const entry = pendingPiAwareFetches.get(id);
+            if (!entry) {
+                continue;
+            }
+
+            entry.controller.abort();
+            finalizePiAwareFetch(id);
+        }
+    }, PI_AWARE_WATCHDOG_INTERVAL_MS);
+
+    interval.unref();
+}
+
+startPiAwareFetchWatchdog();
+
+function getTSDBAgent(url) {
+    if (tsdbAgentPool.has(url)) {
+        return tsdbAgentPool.get(url);
+    }
+
+    const isHttps = url.startsWith('https://');
+    const AgentClass = isHttps ? https.Agent : http.Agent;
+    const agent = new AgentClass({
+        keepAlive: true,
+        maxSockets: 2,
+        maxFreeSockets: 2,
+        keepAliveMsecs: 30000
+    });
+
+    tsdbAgentPool.set(url, agent);
+    return agent;
+}
+
 // --- TSDB Write Functions ---
 async function writeLinesToTSDB(lines) {
     const tsdbConfig = config.tsdb;
@@ -100,7 +216,16 @@ async function writeLinesToTSDB(lines) {
 
     for (const url of urls) {
         try {
-            const response = await axios.post(url, body, { headers, timeout: 10000 });
+            const agent = getTSDBAgent(url);
+            const isHttps = url.startsWith('https://');
+            const axiosOptions = {
+                headers,
+                timeout: 10000,
+                httpAgent: isHttps ? undefined : agent,
+                httpsAgent: isHttps ? agent : undefined
+            };
+
+            const response = await axios.post(url, body, axiosOptions);
             if (response.status === 200 || response.status === 204) {
                 const written = lines.length;
                 tsdbWriteCount += written;
@@ -116,7 +241,7 @@ async function writeLinesToTSDB(lines) {
     return 0;
 }
 
-function formatPositionAsLineProtocol(position, receiverLat = 0.0, receiverLon = 0.0) {
+function formatPositionAsLineProtocol(position, receiverLat = 0.0, receiverLon = 0.0, receiverId = 'server', receiverVersion = '1.0') {
     const { hex, flight, lat, lon, alt, gs, track, timestamp, registration, aircraft_type, squawk, rssi } = position;
 
     // Validate required fields
@@ -131,8 +256,8 @@ function formatPositionAsLineProtocol(position, receiverLat = 0.0, receiverLon =
         registration: registration || 'N/A',
         type: aircraft_type || 'N/A',
         data_source: 'piaware',
-        receiver_id: 'server',  // Server-based collection
-        receiver_version: '1.0'
+        receiver_id: receiverId,
+        receiver_version: receiverVersion
     };
 
     // Build fields
@@ -386,6 +511,9 @@ function generateHeatmapData() {
     
     positionHistory.forEach(pos => {
         if (!pos.lat || !pos.lon) return;
+        
+        // Skip positions at or very close to 0,0 (invalid data)
+        if (Math.abs(pos.lat) < 0.01 && Math.abs(pos.lon) < 0.01) return;
         
         // Convert to grid coordinates (simplified)
         const gridX = Math.floor(pos.lon * 10); // Rough grid
@@ -1392,6 +1520,9 @@ function generateHeatmapData(positions, gridSize = 0.01) {
     positions.forEach(pos => {
         if (!pos.lat || !pos.lon) return;
         
+        // Skip positions at or very close to 0,0 (invalid data)
+        if (Math.abs(pos.lat) < 0.01 && Math.abs(pos.lon) < 0.01) return;
+        
         const latKey = Math.floor(pos.lat / gridSize) * gridSize;
         const lonKey = Math.floor(pos.lon / gridSize) * gridSize;
         const key = `${latKey},${lonKey}`;
@@ -1434,72 +1565,63 @@ function generateHeatmapData(positions, gridSize = 0.01) {
 const fetchData = async () => {
     console.log(`[fetchData] Starting fetchData`);
     try {
-        // Fetch from all PiAware receivers (current + historical data)
+        // Fetch from all PiAware receivers (current data only)
         const fetch = (await import('node-fetch')).default;
-        const http = await import('http');
-        const https = await import('https');
-
-        // Create aggressive agent that closes connections quickly
-        const createAgent = (url, requestTimeout = 3000) => {
-            const isHttps = url.startsWith('https://');
-            const AgentClass = isHttps ? https : http;
-            const agent = new AgentClass.Agent({
-                keepAlive: false,      // Disable keep-alive entirely
-                maxSockets: 1,         // Only 1 connection per host
-                maxFreeSockets: 0,     // Don't keep any free sockets
-                timeout: requestTimeout,  // Use provided timeout
-                keepAliveMsecs: 1000   // Short keep-alive time (if enabled)
-            });
-
-            // Force destroy all sockets after request timeout + buffer
-            setTimeout(() => {
-                agent.destroy();
-            }, requestTimeout + 500);
-
-            return agent;
-        };
 
         const currentPromises = PIAWARE_URLS.map(url => {
-            const agent = createAgent(url, 3000);  // 3 seconds for current data
+            const agent = getPiAwareAgent(url);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => {
+                logger.warn(`[fetchData] PiAware current fetch timeout for ${url}`);
+                controller.abort();
+            }, 3000);
+            const fetchId = trackPiAwareFetch({ url, agent, controller, timeoutId });
+
             return fetch(url, {
                 agent: agent,
-                timeout: 3000  // 3 seconds for current data
+                signal: controller.signal
             })
             .then(res => res.json())
             .then(data => {
-                // Destroy agent after successful response
-                setTimeout(() => agent.destroy(), 100);
-                return { data };
+                return { data, url };
             })
             .catch(err => {
-                // Destroy agent on error too
-                setTimeout(() => agent.destroy(), 100);
-                logger.warn(`Failed to fetch current data from ${url}: ${err.message}`);
-                return { data: { aircraft: [] } }; // Return empty data on failure
-            });
+                if (err.name === 'AbortError') {
+                    logger.warn(`PiAware current fetch aborted for ${url}: ${err.message}`);
+                } else {
+                    logger.warn(`Failed to fetch current data from ${url}: ${err.message}`);
+                }
+                return { data: { aircraft: [] }, url }; // Return empty data on failure
+            })
+            .finally(() => finalizePiAwareFetch(fetchId));
         });
 
-        // Also fetch historical data (last 120 seconds) - needs longer timeout
         const historyPromises = PIAWARE_URLS.map(url => {
-            const agent = createAgent(url, 10000);  // 10 seconds for historical data
+            const agent = getPiAwareAgent(url);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => {
+                logger.warn(`[fetchData] PiAware historical fetch timeout for ${url}`);
+                controller.abort();
+            }, 10000);
+            const fetchId = trackPiAwareFetch({ url, agent, controller, timeoutId });
+
             return fetch(`${url}?history=120`, {
-                agent: agent,
-                timeout: 10000  // 10 seconds for historical data (needs more time)
+                agent,
+                signal: controller.signal
             })
             .then(res => res.json())
-            .then(data => {
-                // Destroy agent after successful response
-                setTimeout(() => agent.destroy(), 100);
-                return { data };
-            })
+            .then(data => ({ data, url }))
             .catch(err => {
-                // Destroy agent on error too
-                setTimeout(() => agent.destroy(), 100);
-                logger.warn(`Failed to fetch historical data from ${url}: ${err.message}`);
-                return { data: { aircraft: [] } }; // Return empty data on failure
-            });
+                if (err.name === 'AbortError') {
+                    logger.warn(`PiAware historical fetch aborted for ${url}: ${err.message}`);
+                } else {
+                    logger.warn(`Failed to fetch historical data from ${url}: ${err.message}`);
+                }
+                return { data: { aircraft: [] }, url };
+            })
+            .finally(() => finalizePiAwareFetch(fetchId));
         });
-        
+
         const [currentResponses, historyResponses, airlineDb, typesDb] = await Promise.all([
             Promise.all(currentPromises),
             Promise.all(historyPromises),
@@ -1511,55 +1633,66 @@ const fetchData = async () => {
             // Skip data enrichment when databases are not available
         }
 
-        // Aggregate aircraft data from all receivers (current + historical)
+        // Aggregate aircraft data from all receivers (current only)
         const aircraftMap = new Map(); // Use Map to deduplicate by hex code
         
         // Process current data first
         for (const response of currentResponses) {
             const aircraftList = response.data.aircraft || [];
+            const receiverId = PIAWARE_RECEIVER_IDS.get(response.url) || DEFAULT_RECEIVER_ID;
             for (const aircraft of aircraftList) {
                 if (aircraft.hex) {
-                    aircraftMap.set(aircraft.hex, { ...aircraft, dataSource: 'current' });
+                    // Normalize hex/icao to lowercase for consistent deduplication
+                    const hexNorm = aircraft.hex.toString().toLowerCase();
+                    aircraft.hex = hexNorm;
+                    aircraftMap.set(hexNorm, { ...aircraft, dataSource: 'current', receiver_id: receiverId });
                 }
             }
         }
         
-        // Then process historical data, only adding aircraft not already in current data
+        // Apply historical data to any aircraft we already have so fields such as callsign/squawk/registration stay filled
         for (const response of historyResponses) {
             const aircraftList = response.data.aircraft || [];
             for (const aircraft of aircraftList) {
-                if (aircraft.hex && !aircraftMap.has(aircraft.hex)) {
-                    aircraftMap.set(aircraft.hex, { ...aircraft, dataSource: 'historical' });
+                if (!aircraft.hex) continue;
+                // Normalize hex to lowercase so history matches current records
+                const hexNorm = aircraft.hex.toString().toLowerCase();
+                aircraft.hex = hexNorm;
+                const existing = aircraftMap.get(hexNorm);
+                if (!existing) continue;
+
+                const merged = { ...existing };
+                if ((!merged.flight || merged.flight === 'N/A') && aircraft.flight) {
+                    merged.flight = aircraft.flight;
                 }
+                if ((!merged.squawk || merged.squawk === 'N/A') && aircraft.squawk) {
+                    merged.squawk = aircraft.squawk;
+                }
+                const historyRegistration = aircraft.registration || aircraft.r;
+                if ((!merged.registration || merged.registration === 'N/A') && historyRegistration) {
+                    merged.registration = historyRegistration;
+                }
+                if (!merged.aircraft_type || merged.aircraft_type === 'N/A') {
+                    merged.aircraft_type = aircraft.t || merged.aircraft_type;
+                }
+                if (!merged.manufacturer && aircraft.manufacturer) {
+                    merged.manufacturer = aircraft.manufacturer;
+                }
+                if (!merged.manufacturerLogo && aircraft.manufacturerLogo) {
+                    merged.manufacturerLogo = aircraft.manufacturerLogo;
+                }
+                if (!merged.flight && aircraft.flight) {
+                    merged.flight = aircraft.flight;
+                }
+                aircraftMap.set(aircraft.hex, merged);
             }
         }
-        
+
         // Convert map to array for further processing
         const allAircraft = Array.from(aircraftMap.values());
         
-        // Separate current and historical aircraft for different purposes
+        // Separate current aircraft for further processing
         const liveAircraft = allAircraft.filter(ac => ac.dataSource === 'current');
-        const historicalAircraft = allAircraft.filter(ac => ac.dataSource === 'historical');
-        
-        // If no live aircraft data was received from current sources, add mock data for testing
-        if (liveAircraft.length === 0) {
-            logger.info('No live aircraft data received from PiAware sources, using mock data for testing');
-            allAircraft.push({
-                hex: 'TEST123',
-                flight: 'TEST001',
-                lat: receiver_lat + 0.01,
-                lon: receiver_lon + 0.01,
-                alt_baro: 25000,
-                gs: 450,
-                track: 90,
-                squawk: '1234',
-                rssi: -15.5,
-                dataSource: 'mock'
-            });
-        }
-        
-        // Update liveAircraft to include mock data
-        const liveAircraftWithMock = allAircraft.filter(ac => ac.dataSource === 'current' || ac.dataSource === 'mock');
         
         // Enrich aircraft data if databases are available
         if (airlineDb && typesDb) {
@@ -1619,7 +1752,7 @@ const fetchData = async () => {
         const positionsForTSDB = [];
 
         // Update tracking and position history
-        liveAircraftWithMock.forEach(ac => {
+        liveAircraft.forEach(ac => {
             if (ac.lat !== undefined && ac.lon !== undefined) {
                 // Calculate slant distance for reception records
                 if (receiver_lat !== 0.0 && receiver_lon !== 0.0 && ac.alt_baro && ac.alt_baro !== 'N/A') {
@@ -1643,7 +1776,8 @@ const fetchData = async () => {
                     aircraft_type: ac.aircraft_type,
                     airline: ac.airline,
                     squawk: ac.squawk,
-                    rssi: ac.rssi
+                    rssi: ac.rssi,
+                    receiver_id: ac.receiver_id || DEFAULT_RECEIVER_ID
                 };
                 positionHistory.push(position);
                 
@@ -1713,7 +1847,7 @@ const fetchData = async () => {
         if (positionsForTSDB.length > 0) {
             console.log(`TSDB: Processing ${positionsForTSDB.length} positions for TSDB write`);
             try {
-                const lines = positionsForTSDB.map(pos => formatPositionAsLineProtocol(pos, receiver_lat, receiver_lon)).filter(line => line !== null);
+                const lines = positionsForTSDB.map(pos => formatPositionAsLineProtocol(pos, receiver_lat, receiver_lon, pos.receiver_id || DEFAULT_RECEIVER_ID, PIAWARE_RECEIVER_VERSION)).filter(line => line !== null);
                 console.log(`TSDB: Generated ${lines.length} line protocol entries`);
                 if (lines.length > 0) {
                     // Write in batches of 100 to avoid request size limits
@@ -1739,7 +1873,7 @@ const fetchData = async () => {
         const liveData = {
             trackingCount: Object.keys(aircraftTracking).length,
             runningPositionCount,
-            aircraft: liveAircraftWithMock,
+            aircraft: liveAircraft,
             runtime: Math.floor((Date.now() - trackerStartTime) / 1000),
             maxRssi,
             minRssi,

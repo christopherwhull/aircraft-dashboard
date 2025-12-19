@@ -1138,6 +1138,28 @@
         const persistentTracksLayer = L.layerGroup();
         const persistentTracks = new Map(); // hex -> LayerGroup
         try { window.persistentTracksLayer = persistentTracksLayer; window.persistentTracks = persistentTracks; } catch (e) {}
+        const PERSISTENT_TRACK_TTL_MS = 120 * 60 * 1000; // 2 hours
+        const PERSISTENT_TRACK_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+        const persistentTrackTimestamps = new Map();
+        const persistentTracksSetOriginal = persistentTracks.set.bind(persistentTracks);
+        const persistentTracksDeleteOriginal = persistentTracks.delete.bind(persistentTracks);
+        const persistentTracksClearOriginal = persistentTracks.clear.bind(persistentTracks);
+        persistentTracks.set = function (hex, value) {
+            const normalizedKey = (hex || '').toString().toLowerCase();
+            if (!normalizedKey) return persistentTracksSetOriginal.call(this, normalizedKey, value);
+            persistentTrackTimestamps.set(normalizedKey, Date.now());
+            return persistentTracksSetOriginal.call(this, normalizedKey, value);
+        };
+        persistentTracks.delete = function (hex) {
+            const normalizedKey = (hex || '').toString().toLowerCase();
+            const result = persistentTracksDeleteOriginal.call(this, normalizedKey);
+            persistentTrackTimestamps.delete(normalizedKey);
+            return result;
+        };
+        persistentTracks.clear = function () {
+            persistentTrackTimestamps.clear();
+            return persistentTracksClearOriginal.call(this);
+        };
         // Temporary on-click tracks (shown when persist-on-click is NOT enabled)
         const tempPersistentLayer = L.layerGroup();
         try { window.tempPersistentLayer = tempPersistentLayer; } catch (e) {}
@@ -1949,6 +1971,27 @@
                 listEl.textContent = keys.length ? keys.join(', ') : '';
             }
         }
+
+        function cleanupExpiredPersistentTracks() {
+            const now = Date.now();
+            let removed = false;
+            persistentTrackTimestamps.forEach((ts, hex) => {
+                if ((now - ts) >= PERSISTENT_TRACK_TTL_MS) {
+                    if (persistentTracks.has(hex)) {
+                        const lg = persistentTracks.get(hex);
+                        try { persistentTracksLayer.removeLayer(lg); } catch (e) {}
+                        persistentTracks.delete(hex);
+                        removed = true;
+                    } else {
+                        persistentTrackTimestamps.delete(hex);
+                    }
+                }
+            });
+            if (removed) updatePersistedIndicator();
+        }
+
+        cleanupExpiredPersistentTracks();
+        setInterval(cleanupExpiredPersistentTracks, PERSISTENT_TRACK_CLEANUP_INTERVAL_MS);
 
         // Update debug panel with lastSquawk and lastPositions for a hex
         function updateDebugPanel(hex) {

@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const logger = require('./lib/logger');
+const { logW3C, initializeW3CLogger } = logger;
 
 const app = express();
 const server = http.createServer(app);
@@ -14,6 +15,9 @@ const io = socketIo(server, {
 
 // Store the latest live data
 let latestLiveData = null;
+
+initializeW3CLogger({ server: { w3cLogDir: 'logs' } });
+app.use(logW3C);
 
 // WebSocket connection handling
 io.on('connection', (socket) => {

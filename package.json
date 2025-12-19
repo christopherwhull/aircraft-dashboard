@@ -29,6 +29,8 @@
     "logs:pm2": "pm2 logs aircraft-dashboard",
     "monit:pm2": "pm2 monit",
     "restart:headless": "python tools/manage-services.py restart --wait --timeout 30",
+    "start:influxdb": "cmd /c \"start \"\"InfluxDB\"\" \"C:\\influxdb3-core-3.7.0-windows_amd64\\influxdb3.exe\" serve --node-id airsquawk --data-dir \"C:\\Users\\chris\\aircraft-dashboard-new\\influxdb_data\" --auth-token \"apiv3_uYwFVXLMYNcxSvy_inEqBriWTdzGb11WWMFVi646AbcyucrNmkWf8Uc2Nlu3t8lUykV3TTQYZJQLraHtcnOkeg\"\"",
+    "start:influxdb:foreground": "\"C:\\influxdb3-core-3.7.0-windows_amd64\\influxdb3.exe\" serve --node-id airsquawk --data-dir \\\"C:\\Users\\chris\\aircraft-dashboard-new\\influxdb_data\\\"",
     "services:start": "python tools/manage-services.py start",
     "services:stop": "python tools/manage-services.py stop",
     "services:restart": "python tools/manage-services.py restart",

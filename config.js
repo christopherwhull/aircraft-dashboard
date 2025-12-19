@@ -18,8 +18,11 @@ module.exports = {
     // --- Data Source Configuration ---
     dataSource: {
         piAwareUrls: (process.env.PIAWARE_URLS ? process.env.PIAWARE_URLS.split(',') : null) || 
-                     ['http://192.168.0.160:8080/data/aircraft.json', 'http://192.168.0.161:8080/data/aircraft.json'],
-        receiverTimeout: 5000, // milliseconds
+             [
+                 'http://192.168.0.160:8080/data/aircraft.json',
+                 'http://192.168.0.161:8080/data/aircraft.json',
+             ],
+        receiverTimeout: 3000, // milliseconds
     },
 
     // --- ArcGIS Configuration ---

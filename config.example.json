@@ -8,7 +8,11 @@
     "w3cLogDir": "runtime/logs"
   },
   "dataSource": {
-    "piAwareUrl": "http://192.168.0.161:8080/data/aircraft.json",
+    "piAwareUrl": "http://192.168.0.160:8080/data/aircraft.json",
+    "piAwareUrls": [
+      "http://192.168.0.160:8080/data/aircraft.json",
+      "http://192.168.0.161:8080/data/aircraft.json"
+    ],
     "receiverTimeout": 5000,
     "receiverLat": 42,
     "receiverLon": -87.5
@@ -115,6 +119,10 @@
   },
   "data": {
     "piAwareUrl": "http://127.0.0.1:8080/data/aircraft.json",
+    "piAwareUrls": [
+      "http://192.168.0.160:8080/data/aircraft.json",
+      "http://192.168.0.161:8080/data/aircraft.json"
+    ],
     "receiverTimeout": 5000
   },
   "s3ListLimits": {
