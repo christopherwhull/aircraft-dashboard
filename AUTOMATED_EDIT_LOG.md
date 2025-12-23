@@ -30,4 +30,25 @@ This file records automated or tool-assisted edits with timestamps and snapshots
 - Summary:
   - Fixed a JavaScript syntax error (Missing catch or finally) by moving an inner catch to directly follow its 	ry block and removing a duplicate catch.
 - Snapshot: $(C:\Users\chris\aircraft-dashboard-new\edit-history\2025-12-22T21-45-53Z-live-moving-map.after.txt.FullName) (sha256: DDC3732D1CDE51DB593F276BE91ED1C3030D326AAB922099E7B83C35C8DF8650)
+---
+
+## 2025-12-23T03:34:04.633Z — refactor page & helpers
+- Files modified/added:
+  - public/live-moving-map-refactor.html
+  - public/js/live-moving-map-refactor.js
+  - scripts/check-refactor-page.js (test harness)
+  - scripts/check-refactor-page-verbose.js (verbose test harness)
+- Summary:
+  - Added `live-moving-map-refactor.html` and a modular `live-moving-map-refactor.js` containing extracted helpers and safe test stubs for:
+    - fetchWithTimeout (TimeoutError)
+    - fetchTracksBatch -> uses `/api/v2/track` and falls back to synthetic tracks
+    - fetchFlightsBatch -> uses `/api/v2/flight` and falls back to synthetic flights
+    - _fetchAndDrawLiveTracks_body / fetchAndDrawLiveTracks (incremental, chunked processing)
+    - ensureLiveTrackForHex, processPositions, doUpdateLiveMarkers
+    - enrichment helpers: enrichFlightBatch, enrichMarkerData, bindPopupAndTooltip
+    - updateTooltipsForBatch, mergeFlightBatch
+  - Added smoke test harness and a verbose harness to capture failing requests.
+- Snapshots (for rollback):
+  - `edit-history/2025-12-23T03-34-04.633Z-live-moving-map-refactor.html.txt` (sha256: 6aca3c373efcb9d9ebda3b84b5d62ff424634d6cb26c458c3bb6e882dcaf24ae)
+  - `edit-history/2025-12-23T03-34-04.640Z-live-moving-map-refactor.js.txt` (sha256: e0dc1ecf2286b255e0db6830405bf17f39080b3eeb0043ddc696f017db60d51d)
 
