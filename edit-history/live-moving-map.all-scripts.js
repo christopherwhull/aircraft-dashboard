@@ -1,0 +1,3003 @@
+
+
+
+
+
+
+
+
+
+
+        window.createAircraftLogoIcon = createAircraftLogoIcon;
+
+        function updateAirlineDBIndicator() {
+            const el = document.getElementById('airline-db-indicator');
+            if (!el) return;
+            try {
+                const item = localStorage.getItem('airlineDB-v1');
+                if (item) {
+                    const parsed = JSON.parse(item);
+                    if (parsed && parsed.ts) {
+                        const ageMs = Date.now() - parsed.ts;
+                        const ageMinutes = Math.round(ageMs / 60000);
+                        const ageStr = ageMinutes < 60 ? `${ageMinutes}m` : `${(ageMinutes / 60).toFixed(1)}h`;
+                        el.innerHTML = `Airline DB: <em>local (${ageStr} old)</em>`;
+                        return;
+                    }
+                }
+            } catch (e) {}
+            el.innerHTML = `Airline DB: <em>not loaded</em>`;
+        }
+
+        function clearAirlineDBCache() {
+            try { localStorage.removeItem('airlineDB-v1'); } catch (e) {}
+            updateAirlineDBIndicator();
+        }
+
+        function clearAllClientCaches() {
+            try {
+                // Clear all client-side caches
+                aircraftInfoCache.clear();
+                verticalRateCache.clear();
+                flightsCache.clear();
+                squawkCache.clear();
+                lastPositions.clear();
+                lastSquawk.clear();
+                liveMarkers.clear();
+                liveTrails.clear();
+                trackLayer.clearLayers();
+                longTracksLayer.clearLayers();
+                persistentTracks.clear();
+                persistentTrackTimestamps.clear();
+
+                // Clear localStorage items
+                localStorage.removeItem('airlineDB-v1');
+                localStorage.removeItem('leafletHeatmapSettings');
+                localStorage.removeItem('positionsTimescale');
+
+                // Clear cookies (fallback storage)
+                document.cookie = 'leafletHeatmapSettings=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+
+                console.log('All client-side caches and storage cleared');
+                alert('All client-side caches and storage have been cleared. The page will show fresh data.');
+            } catch (e) {
+                console.error('Error clearing caches:', e);
+            }
+        }
+
+        function updateDebugInfo() {
+            try {
+                const aircraftCount = window.liveMarkers ? window.liveMarkers.size : 0;
+                document.getElementById('debug-aircraft-count').textContent = aircraftCount;
+
+                let trackCount = 0;
+                let trackPointCount = 0;
+                if (window.liveTrails) {
+                    window.liveTrails.forEach(trail => {
+                        trackCount++;
+                        if (trail && typeof trail.getLatLngs === 'function') {
+                            trackPointCount += trail.getLatLngs().length;
+                        }
+                    });
+                }
+                if (window.longTracksLayer) {
+                    window.longTracksLayer.eachLayer(lg => {
+                        trackCount++;
+                        lg.eachLayer(layer => {
+                            if (layer instanceof L.Polyline && typeof layer.getLatLngs === 'function') {
+                                trackPointCount += layer.getLatLngs().length;
+                            }
+                        });
+                    });
+                }
+                if (window.persistentTracksLayer) {
+                     window.persistentTracksLayer.eachLayer(lg => {
+                        trackCount++;
+                        lg.eachLayer(layer => {
+                            if (layer instanceof L.Polyline && typeof layer.getLatLngs === 'function') {
+                                trackPointCount += layer.getLatLngs().length;
+                            }
+                        });
+                    });
+                }
+
+
+                document.getElementById('debug-track-count').textContent = trackCount;
+                document.getElementById('debug-track-point-count').textContent = trackPointCount.toLocaleString();
+
+                let oldestAircraftTime = Infinity;
+                let youngestAircraftTime = -Infinity;
+                let oldestPositionTime = Infinity;
+                let newestPositionTime = -Infinity;
+
+                if (window.liveMarkers) {
+                    window.liveMarkers.forEach(markerData => {
+                        const markerTimestamp = markerData.lastSeen;
+                        if (markerTimestamp < oldestAircraftTime) oldestAircraftTime = markerTimestamp;
+                        if (markerTimestamp > youngestAircraftTime) youngestAircraftTime = markerTimestamp;
+
+                        if (markerData.marker && markerData.marker._posData && markerData.marker._posData.timestamp) {
+                             const posTimestamp = markerData.marker._posData.timestamp;
+                             if (posTimestamp < oldestPositionTime) oldestPositionTime = posTimestamp;
+                             if (posTimestamp > newestPositionTime) newestPositionTime = posTimestamp;
+                        }
+                    });
+                }
+
+                const formatTs = (ts) => {
+                    if (!isFinite(ts) || ts <= 0) return '-';
+                    return new Date(ts).toLocaleTimeString();
+                };
+                
+                const formatAge = (ts) => {
+                    if (!isFinite(ts) || ts <= 0) return '-';
+                    const ageSeconds = Math.floor((Date.now() - ts) / 1000);
+                    if (ageSeconds < 0) return 'future';
+                    return `${ageSeconds}s ago`;
+                };
+
+                document.getElementById('debug-oldest-aircraft').textContent = `${formatTs(oldestAircraftTime)} (${formatAge(oldestAircraftTime)})`;
+                document.getElementById('debug-youngest-aircraft').textContent = `${formatTs(youngestAircraftTime)} (${formatAge(youngestAircraftTime)})`;
+                document.getElementById('debug-oldest-position').textContent = `${formatTs(oldestPositionTime)} (${formatAge(oldestPositionTime)})`;
+                document.getElementById('debug-newest-position').textContent = `${formatTs(newestPositionTime)} (${formatAge(newestPositionTime)})`;
+            } catch (e) {
+                console.error("Error updating debug info:", e);
+                document.getElementById('debug-aircraft-count').textContent = 'ERR';
+            }
+        }
+        // Initialize map with dynamic centering based on config and receiver location
+        async function initializeMap() {
+            try {
+                // Fetch config and receiver location in parallel
+                const [configResponse, receiverResponse] = await Promise.all([
+                    fetch('/api/config'),
+                    fetch('/api/receiver-location')
+                ]);
+
+                const config = await configResponse.json();
+                const receiver = await receiverResponse.json();
+
+                // Determine map center
+                let centerLat, centerLon, zoomLevel;
+
+                if (config.heatmap && config.heatmap.mapCenter && config.heatmap.mapCenter.enabled) {
+                    // Use config override
+                    centerLat = config.heatmap.mapCenter.lat;
+                    centerLon = config.heatmap.mapCenter.lon;
+                    zoomLevel = config.heatmap.mapCenter.zoom;
+                    console.log('Using config map center:', centerLat, centerLon, zoomLevel);
+                } else if (receiver.available) {
+                    // Use receiver location
+                    centerLat = receiver.lat;
+                    centerLon = receiver.lon;
+                    zoomLevel = 8; // Default zoom when using receiver location
+                    console.log('Using receiver location:', centerLat, centerLon, zoomLevel);
+                } else {
+                    // Fallback to default (Great Lakes region)
+                    centerLat = 42.0;
+                    centerLon = -87.9;
+                    zoomLevel = 7;
+                    console.log('Using fallback location (Great Lakes):', centerLat, centerLon, zoomLevel);
+                }
+
+                // Initialize map
+                const map = L.map('map').setView([centerLat, centerLon], zoomLevel);
+                window.map = map;
+                try { updateAirlineDBIndicator(); } catch(e) {}
+
+                // Create dedicated panes for live markers and persistent tracks so they sit above grid layers
+                map.createPane('livePane');
+                map.getPane('livePane').style.zIndex = 650; // above overlay tiles
+                map.createPane('persistentPane');
+                map.getPane('persistentPane').style.zIndex = 660; // above livePane
+                // Dedicated pane for heatmap/grid so it stays below live markers
+                map.createPane('heatmapPane');
+                map.getPane('heatmapPane').style.zIndex = 400; // below livePane/persistentPane
+
+        // Add OpenStreetMap base layer
+        const osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 18
+        });
+
+        // Add OpenTopoMap for terrain visualization
+        const openTopoLayer = L.tileLayer('https://tile.opentopomap.org/{z}/{x}/{y}.png', {
+            attribution: 'Map data: © OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap (CC-BY-SA)',
+            maxZoom: 17
+        });
+
+        // Add CartoDB Voyager (good for aviation - clean, labels airports)
+        const cartoVoyagerLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+            attribution: '© OpenStreetMap contributors © CARTO',
+            maxZoom: 19,
+            subdomains: 'abcd'
+        });
+
+        // FAA aviation chart layers from local tile proxy
+        const proxyBase = 'http://localhost:3004/tile';
+
+        // Official FAA VFR Terminal Area Chart
+        const faaVfrTerminal = L.tileLayer(`${proxyBase}/vfr-terminal/{z}/{x}/{y}`, {
+            attribution: '© FAA',
+            maxZoom: 12,
+            minZoom: 8,
+            zIndex: 200,
+            opacity: 0.8,
+            errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' // transparent 1x1 pixel
+        });
+
+        // Official FAA VFR Sectional Chart
+        const faaVfrSectional = L.tileLayer(`${proxyBase}/vfr-sectional/{z}/{x}/{y}`, {
+            attribution: '© FAA',
+            maxZoom: 12,
+            minZoom: 8,
+            zIndex: 200,
+            opacity: 0.8,
+            errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' // transparent 1x1 pixel
+        });
+
+        // Official FAA IFR Area Low Chart
+        const faaIfrAreaLow = L.tileLayer(`${proxyBase}/ifr-arealow/{z}/{x}/{y}`, {
+            attribution: '© FAA',
+            maxZoom: 12,
+            minZoom: 8,
+            zIndex: 200,
+            opacity: 0.8,
+            errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' // transparent 1x1 pixel
+        });
+
+        // Official FAA IFR Enroute High Chart
+        const faaIfrHigh = L.tileLayer(`${proxyBase}/ifr-enroute-high/{z}/{x}/{y}`, {
+            attribution: '© FAA',
+            maxZoom: 12,
+            minZoom: 8,
+            zIndex: 200,
+            opacity: 0.8,
+            errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' // transparent 1x1 pixel
+        });
+
+        // Weather overlay layers from Iowa State University Mesonet
+        const weatherRadarUrl = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png';
+        const surfaceAnalysisUrl = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/sfc_analysis/{z}/{x}/{y}.png';
+        const satelliteWvUrl = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/goes-wv-4km-900913/{z}/{x}/{y}.png';
+
+        const weatherRadar = L.tileLayer(weatherRadarUrl, {
+            attribution: 'Weather © Iowa State University',
+            opacity: 0.25,
+            zIndex: 250
+        });
+        const surfaceAnalysis = L.tileLayer(surfaceAnalysisUrl, {
+            attribution: 'Weather © Iowa State University',
+            opacity: 0.25,
+            zIndex: 251
+        });
+        const satelliteWv = L.tileLayer(satelliteWvUrl, {
+            attribution: 'Weather © Iowa State University',
+            opacity: 0.25,
+            zIndex: 249
+        });
+
+        // ArcGIS base map layers
+        const arcgisImagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+            maxZoom: 18
+        });
+
+        const arcgisStreet = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012',
+            maxZoom: 18
+        });
+
+        const arcgisTopo = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, FAO, NPS, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community',
+            maxZoom: 18
+        });
+
+        // Layer control
+        const baseLayers = {
+            "OpenStreetMap (Internet)": osmLayer,
+            "CartoDB Voyager (Internet)": cartoVoyagerLayer,
+            "OpenTopoMap (Internet)": openTopoLayer,
+            "ArcGIS World Imagery": arcgisImagery,
+            "ArcGIS World Street Map": arcgisStreet,
+            "ArcGIS World Topo": arcgisTopo
+        };
+        
+        let persistentTracksLayer = L.layerGroup();
+        let liveTracksLayer = L.layerGroup();
+        const overlayLayers = {
+            "Weather Radar Internet": weatherRadar,
+            "Surface Analysis Internet": surfaceAnalysis,
+            "Satellite Water Vapor Internet": satelliteWv,
+            "FAA VFR Terminal": faaVfrTerminal,
+            "FAA VFR Sectional": faaVfrSectional,
+            "FAA IFR Area Low": faaIfrAreaLow,
+            "FAA IFR Enroute High": faaIfrHigh
+        };
+        
+        osmLayer.addTo(map);
+        // Keep a handle to the layers control so we can add overlays once created
+        const layersControl = L.control.layers(baseLayers, overlayLayers).addTo(map);
+        // Expose overlay/base layers and control so global helpers like saveSettings can access them
+        try { window.overlayLayers = overlayLayers; window.baseLayers = baseLayers; window.layersControl = layersControl; } catch(e) {}
+
+        // Register the Heatmap Grid overlay early so its label is present in the layers control
+        // always (prevents overlay toggle flakiness in tests by ensuring a consistent control entry)
+        try {
+            if (!gridLayer) gridLayer = L.layerGroup();
+            // Do NOT auto-add the placeholder grid to the map - keep it off by default.
+            // Toggling the overlay via the layers control will add it and trigger saveSettings.
+            try { layersControl.addOverlay(gridLayer, 'Heatmap Grid'); } catch (e) {}
+            try { window.gridLayer = gridLayer; } catch (e) {}
+            // Persist overlay add/remove and base layer changes so we always save
+            try {
+                map.on('overlayadd', (evt) => { try { console.log('overlayadd event; grid present?', !!(map.hasLayer && map.hasLayer(gridLayer))); saveSettings(); } catch (e) { console.warn('overlayadd handler failed', e); } });
+                map.on('overlayremove', (evt) => { try { console.log('overlayremove event; grid present?', !!(map.hasLayer && map.hasLayer(gridLayer))); saveSettings(); } catch (e) { console.warn('overlayremove handler failed', e); } });
+                map.on('baselayerchange', () => { try { console.log('baselayerchange'); saveSettings(); } catch (e) { console.warn('baselayerchange handler failed', e); } });
+            } catch(e) { console.warn('Failed to register layer change persistence', e); }
+            // Signal overlays ready to tests - grid overlay entry is present now
+            try { window.heatmapOverlaysReady = true; window.dispatchEvent(new Event('heatmap-overlays-ready')); } catch(e) {}
+        } catch (e) { console.warn('Failed to register placeholder Heatmap Grid overlay early', e); }
+
+        // Add our track layers now that `map` is ready
+        if (typeof liveTracksLayer !== 'undefined') liveTracksLayer.addTo(map);
+        if (typeof persistentTracksLayer !== 'undefined') persistentTracksLayer.addTo(map);
+        
+        // Load ARTCC boundaries from FAA Open Data
+        fetch('https://adds-faa.opendata.arcgis.com/datasets/67885972e4e940b2aa6d74024901c561_0.geojson')
+            .then(response => response.json())
+            .then(data => {
+                const artccLayer = L.geoJSON(data, {
+                    style: {
+                        color: 'red',
+                        weight: 2,
+                        fillOpacity: 0
+                    }
+                });
+                layersControl.addOverlay(artccLayer, "ARTCC Boundaries");
+            })
+            .catch(error => console.error('Failed to load ARTCC boundaries:', error));
+        
+        // Load Squawk Transitions layer
+        console.log('About to create squawk transitions layer...');
+        let squawkTransitionsLayer = L.layerGroup();
+        console.log('Created empty squawk transitions layer');
+        
+        // Add to layers control immediately (even if empty)
+        if (window.layersControl) {
+            window.layersControl.addOverlay(squawkTransitionsLayer, "Squawk Transitions");
+            console.log('Added squawk transitions overlay to layers control');
+        } else {
+            console.error('Layers control not available');
+        }
+        
+        // Function to reload squawk transitions data for current time range
+        window.loadSquawkTransitionsData = function() {
+            if (!squawkTransitionsLayer) {
+                console.warn('Squawk transitions layer not initialized yet');
+                return;
+            }
+            
+            console.log('Reloading squawk transitions data...');
+            
+            // Clear existing markers
+            squawkTransitionsLayer.clearLayers();
+            
+            // Get the current time window and convert to hours
+            const timeWindow = document.getElementById('time-window') ? document.getElementById('time-window').value : '24h';
+            
+            // Local windowToHours function
+            function windowToHours(w) {
+                if (!w) return 24;
+                if (w === 'all') return 744;
+                if (w.endsWith('d')) {
+                    const days = parseInt(w.replace('d',''), 10);
+                    return isNaN(days) ? 24 : days * 24;
+                }
+                if (w.endsWith('h')) {
+                    const hrs = parseInt(w.replace('h',''), 10);
+                    return isNaN(hrs) ? 24 : hrs;
+                }
+                return 24;
+            }
+            
+            const hours = windowToHours(timeWindow);
+            console.log('Using time window:', timeWindow, 'converted to hours:', hours);
+            
+            fetchWithTimeout(`/api/squawk-transitions-map?hours=${hours}`)
+                .then(response => {
+                    console.log('Squawk transitions reload API response:', response.status);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Processing', data.transitions.length, 'squawk transitions for reload');
+                    
+                    data.transitions.forEach((transition, index) => {
+                        if (transition.lat !== undefined && transition.lon !== undefined) {
+                            console.log(`Creating marker ${index} at ${transition.lat}, ${transition.lon}`);
+                            const marker = L.circleMarker([transition.lat, transition.lon], {
+                                color: 'blue',
+                                fillColor: 'blue',
+                                fillOpacity: 0.9,
+                                radius: 6,
+                                weight: 2,
+                                pane: 'markerPane'
+                            });
+                            
+                            const popupContent = `
+                                <div style="font-family: Arial, sans-serif; font-size: 12px;">
+                                    <strong>Squawk Transition</strong><br>
+                                    Aircraft: ${transition.hex || transition.icao || 'Unknown'}<br>
+                                    From: ${transition.from} → To: ${transition.to}<br>
+                                    Time: ${new Date(transition.timestamp).toLocaleString()}<br>
+                                    Position: ${transition.lat.toFixed(4)}, ${transition.lon.toFixed(4)}
+                                </div>
+                            `;
+                            
+                            marker.bindPopup(popupContent);
+                            squawkTransitionsLayer.addLayer(marker);
+                            console.log(`Added marker ${index} to layer`);
+                        } else {
+                            console.warn(`Transition ${index} missing lat/lon:`, transition);
+                        }
+                    });
+                    
+                    console.log('Squawk transitions data reloaded with', data.transitions.length, 'markers');
+                })
+                .catch(error => console.error('Failed to reload squawk transitions:', error));
+        };
+        
+        // Load initial squawk transitions data
+        loadSquawkTransitionsData();
+        
+        // Log when map zoom changes
+        map.on('zoomend', () => {
+            // Future zoom-based logic can go here
+        });
+
+            } catch (error) {
+                console.error('Failed to initialize map:', error);
+                // Fallback to hardcoded initialization
+                const map = L.map('map').setView([42.0, -87.9], 7);
+                window.map = map;
+                
+                // Add basic OSM layer
+                const osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors',
+                    maxZoom: 18
+                }).addTo(map);
+            }
+        }
+
+        // Initialize the map
+        (async () => {
+            try {
+                await initializeMap();
+                console.log('Map initialized successfully');
+                
+                // Always start live positions since show-live is always enabled
+                try {
+                    // Start live positions now that map is ready
+                    setTimeout(() => { try { toggleLivePositions(); } catch (e) { console.warn('Auto-start toggle failed', e); } }, 50);
+                } catch (e) {
+                    console.warn('Failed to auto-start live positions:', e);
+                }
+
+                // Always start long tracks polling (mandatory)
+                try {
+                    setTimeout(() => { try { startLongTracksPolling(); } catch (e) { console.warn('Failed to start long tracks polling', e); } }, 100);
+                    setTimeout(() => { try { startLiveTracksPolling(); } catch (e) { console.warn('Failed to start live tracks polling', e); } }, 150);
+                    setTimeout(() => { try { startLiveTracksPolling(); } catch (e) { console.warn('Failed to start live tracks polling', e); } }, 150);
+                } catch (e) {
+                    console.warn('Failed to auto-start long tracks:', e);
+                }
+            } catch (error) {
+                console.error('Failed to initialize map:', error);
+            }
+        })();
+
+        // Age updater: refresh Age strings in tooltips/popups periodically
+        (function() {
+            if (window._ageUpdaterInstalled) return; // idempotent
+            window._ageUpdaterInstalled = true;
+            window._ageIntervalId = null;
+            window._AGE_REFRESH_MS = 1000; // 1s
+
+            window._refreshTooltipAges = function refreshTooltipAges() {
+                try {
+                    // Live markers
+                    try {
+                        window.liveMarkers.forEach((md, hx) => {
+                            try {
+                                const marker = md && md.marker;
+                                if (!marker) return;
+                                const pos = (marker._posData || { hex: hx });
+                                const html = window.buildHoverTooltipHTML ? window.buildHoverTooltipHTML(pos) : null;
+                                if (html) {
+                                    try { const tt = marker.getTooltip && marker.getTooltip(); if (tt && tt.setContent) tt.setContent(html); } catch (e) {}
+                                    try { const pp = marker.getPopup && marker.getPopup(); if (pp && pp.setContent) pp.setContent(html); } catch (e) {}
+                                }
+                            } catch (e) {}
+                        });
+                    } catch (e) {}
+
+                    // Persistent tracks
+                    try {
+                        window.persistentTracks.forEach((lg, hx) => {
+                            try {
+                                const lk = (hx || '').toString().toLowerCase();
+                                const batchData = window.flightsCache && window.flightsCache.get(lk) && window.flightsCache.get(lk).data ? window.flightsCache.get(lk).data : {};
+                                const aircraftCached = (window.aircraftInfoCache && window.aircraftInfoCache.get(lk) && window.aircraftInfoCache.get(lk).data) || {};
+                                const liveData = (window.liveMarkers.get(lk)?.marker && window.liveMarkers.get(lk).marker._posData) || {};
+                                const enrich = Object.assign({}, batchData, aircraftCached, liveData, { hex: lk });
+                                const html = window.buildHoverTooltipHTML ? window.buildHoverTooltipHTML(enrich) : null;
+                                if (html) {
+                                    lg.eachLayer(layer => {
+                                        try {
+                                            const tt = layer.getTooltip && layer.getTooltip();
+                                            if (tt && tt.setContent) { tt.setContent(html); return; }
+                                            const pp = layer.getPopup && layer.getPopup();
+                                            if (pp && pp.setContent) { pp.setContent(html); return; }
+                                        } catch (e) {}
+                                    });
+                                }
+                            } catch (e) {}
+                        });
+                    } catch (e) {}
+                } catch (e) { console.warn('refreshTooltipAges failed', e); }
+            };
+
+            window.startAgeUpdater = function startAgeUpdater() {
+                if (window._ageIntervalId) return;
+                window._ageIntervalId = setInterval(() => { try { window._refreshTooltipAges(); } catch (e) {} }, window._AGE_REFRESH_MS);
+                try { window._refreshTooltipAges(); } catch (e) {}
+            };
+
+            // Start shortly after init
+            setTimeout(() => { try { window.startAgeUpdater(); } catch (e) {} }, 1000);
+        })();
+
+        let gridLayer = null;
+        // we'll register overlays (heatmap grid, live positions, persisted tracks) with the layers control
+        let currentData = null;
+
+        // Cookie management functions
+        function setCookie(name, value, days = 365) {
+            const date = new Date();
+            date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+            document.cookie = `${name}=${value};expires=${date.toUTCString()};path=/`;
+        }
+
+        function getCookie(name) {
+            const nameEQ = name + "=";
+            const ca = document.cookie.split(';');
+            for (let i = 0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+                if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+            }
+            return null;
+        }
+
+
+        function saveSettings() {
+            // No settings to save for this page
+        }
+
+        function loadSettings() {
+            // No settings to load for this page
+        }
+
+
+        // NOTE: Do not call loadSettings() here because overlays may not yet be registered.
+        // loadSettings() will be invoked once after overlays are registered in updateGridDisplay().
+        // This avoids overwriting user toggles and prevents races between initial settings re-apply
+        // and subsequent overlay registration.
+        window._heatmapSettingsApplied = false;
+
+        // Restore positionsTimescale and wire up quick buttons for this page
+        try {
+            // Attach keyboard support and click behaviors to quick buttons
+            const pbtns = document.querySelectorAll('.positions-window-btn');
+            pbtns.forEach(b => {
+                b.addEventListener('keydown', (ev) => {
+                    if (ev.key === 'Enter' || ev.key === ' ') {
+                        ev.preventDefault();
+                        b.click();
+                        return false;
+                    }
+                    return true;
+                });
+                b.addEventListener('click', () => {
+                    try {
+                        const hoursSpec = b.dataset.hours;
+                        const sel = document.getElementById('time-window');
+                        if (sel) {
+                            if (hoursSpec === 'all') sel.value = 'all';
+                            else if (hoursSpec === '168') sel.value = '1w';
+                            else if (hoursSpec === '672') sel.value = '4w';
+                            else sel.value = `${hoursSpec}h`;
+                            try { localStorage.setItem('positionsTimescale', String(sel.value)); } catch (e) {}
+                        }
+                        // Refresh grid after updating the select
+                        try { loadGridData(); } catch (e) {}
+                    } catch (e) {}
+                });
+                try { b.dataset.attached = '1'; } catch (e) {}
+            });
+
+            // Restore persisted timescale if present and highlight active quick button on this page
+            try {
+                const saved = localStorage.getItem('positionsTimescale');
+                if (saved) {
+                    try { document.getElementById('time-window').value = saved; } catch (e) {}
+                    // Determine hours for 'positions-window-btn' matches
+                    let hours = null;
+                    if (saved === 'all') hours = null;
+                    else if (saved.endsWith('h')) hours = Number(saved.replace('h',''));
+                    else if (saved === '1w' || saved === '7d') hours = 168;
+                    else if (saved === '4w') hours = 672;
+                    // Clear existing active class
+                    try { document.querySelectorAll('.positions-window-btn').forEach(b => b.classList.remove('active')); } catch (e) {}
+                    if (typeof hours === 'number') {
+                        const b = Array.from(document.querySelectorAll('.positions-window-btn')).find(x => String(x.dataset.hours) === String(hours));
+                        if (b) b.classList.add('active');
+                    } else {
+                        const b = Array.from(document.querySelectorAll('.positions-window-btn')).find(x => String(x.dataset.hours) === 'all');
+                        if (b) b.classList.add('active');
+                    }
+                }
+            } catch (e) {}
+        } catch (e) {}
+        // Listen for positionsTimescale localStorage changes and update view accordingly
+        try {
+            window.addEventListener('storage', (e) => {
+                if (e.key === 'positionsTimescale') {
+                    const v = e.newValue || '';
+                    try { document.getElementById('time-window').value = v; } catch (e) {}
+                    // Map to hours and update buttons
+                    let hours = null;
+                    if (v === 'all') hours = null;
+                    else if (v.endsWith('h')) hours = Number(v.replace('h',''));
+                    else if (v === '1w' || v === '7d') hours = 168;
+                    else if (v === '4w') hours = 672;
+                    try { document.querySelectorAll('.positions-window-btn').forEach(b => b.classList.remove('active')); } catch (e) {}
+                    if (typeof hours === 'number') {
+                        const b = Array.from(document.querySelectorAll('.positions-window-btn')).find(x => String(x.dataset.hours) === String(hours));
+                        if (b) b.classList.add('active');
+                    } else {
+                        const b = Array.from(document.querySelectorAll('.positions-window-btn')).find(x => String(x.dataset.hours) === 'all');
+                        if (b) b.classList.add('active');
+                    }
+                    try { loadGridData(); } catch (e) {}
+                }
+            });
+        } catch (e) {}
+
+        // Set up weather radar refresh interval (5 minutes)
+        setInterval(() => {
+            const timestamp = Date.now();
+            if (window.map && typeof window.map.hasLayer === 'function' && window.map.hasLayer(weatherRadar)) {
+                weatherRadar.setUrl(weatherRadarUrl + `?t=${timestamp}`);
+            }
+            if (window.map && typeof window.map.hasLayer === 'function' && window.map.hasLayer(surfaceAnalysis)) {
+                surfaceAnalysis.setUrl(surfaceAnalysisUrl + `?t=${timestamp}`);
+            }
+            if (window.map && typeof window.map.hasLayer === 'function' && window.map.hasLayer(satelliteWv)) {
+                satelliteWv.setUrl(satelliteWvUrl + `?t=${timestamp}`);
+            }
+        }, 5 * 60 * 1000);
+
+
+
+        // Live positions are always enabled now
+        // document.getElementById('show-live').addEventListener('change', () => {
+        //     saveSettings();
+        //     toggleLivePositions();
+        // });
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+            setTimeout(() => errorDiv.classList.remove('show'), 5000);
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading').classList.toggle('active', show);
+        }
+
+        // Live positions support
+        let liveLayer = L.layerGroup();
+        let liveIntervalId = null;
+        let isFetchingPositions = false;
+        let socket = null; // Socket.IO connection for live updates
+        // Map of current live markers for smooth updates (hex -> L.marker)
+        const liveMarkers = new Map();
+        // Expose for tests and debugging: attach to window so external harnesses can access
+        try { window.liveMarkers = liveMarkers; } catch (e) {}
+        // Map of last seen squawk per hex (hex -> '1234' or null)
+        const lastSquawk = new Map();
+        // Map of short trail polylines showing recent positions (hex -> L.Polyline)
+        const liveTrails = new Map();
+        // Keep the last N valid positions per hex so we can draw a small tail (hex -> Array<[lat,lon]>)
+        const lastPositions = new Map();
+        const LAST_POSITIONS_COUNT = 3;
+        // Hover debounce timers to reduce rapid fetch/redraw
+        let hoverFetchTimer = null;
+        let hoverClearTimer = null;
+        const HOVER_DEBOUNCE_MS = 150; // delay before fetching track on hover
+
+        // Helper function for fetch with 30-second timeout
+        async function fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                const response = await fetch(url, { ...options, signal: options.signal || controller.signal });
+                clearTimeout(timeoutId);
+                return response;
+            } catch (error) {
+                clearTimeout(timeoutId);
+                throw error;
+            }
+        }
+        const HOVER_CLEAR_MS = 200; // delay before clearing hover track on mouseout
+        // Map of flight poller intervals (hex -> intervalId) used to poll /api/flight every second
+        const flightPollers = new Map();
+        let pendingFlightRequests = 0;
+        const MAX_PENDING_FLIGHT_REQUESTS = 3;
+        // Batch flight cache (icao -> { ts, data }) to avoid excessive UI updates
+        const BATCH_FLIGHT_TTL = 5000; // 5s
+        const flightsCache = new Map();
+        // Squawk cache (hex -> { ts, squawk })
+        const BATCH_SQUAWK_TTL = 5000; // 5s
+        const squawkCache = new Map();
+        // Batch polling controls
+        let batchPollIntervalId = null;
+        const BATCH_POLL_INTERVAL_MS = 10000; // increased from 5s to 10s to reduce server load
+        const BATCH_MAX_PER_REQUEST = 50; // max items per batch request
+        let batchPollInFlight = false;
+        // Cache aircraft info fetched from server (/api/aircraft/:icao24)
+        const aircraftInfoCache = new Map(); // hex -> { ts, data }
+        const AIRCRAFT_CACHE_TTL = 60 * 1000; // 60s
+        // Airline name to code mapping for logo lookup
+        const airlineNameToCode = new Map(); // name -> code
+        // Vertical rate tracking for color coding aircraft
+        const verticalRateCache = new Map(); // hex -> { altitude, timestamp }
+
+        async function fetchAircraftInfo(hex) {
+            if (!hex) return null;
+            const key = hex.toLowerCase();
+            const cached = aircraftInfoCache.get(key);
+            if (cached && (Date.now() - cached.ts) < AIRCRAFT_CACHE_TTL) return cached.data;
+            try {
+                const res = await fetchWithTimeout(`/api/aircraft/${encodeURIComponent(key)}`);
+                if (!res.ok) return null;
+                const data = await res.json();
+                // Check if the response indicates an error (aircraft not found)
+                if (data && data.error) return null;
+                aircraftInfoCache.set(key, { ts: Date.now(), data });
+                return data;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // Load airline name-to-code mapping for logo lookup
+        async function loadAirlineMapping() {
+            try {
+                const res = await fetchWithTimeout('/api/airlines');
+                if (!res.ok) return;
+                const airlines = await res.json();
+                // Populate the mapping: name -> code
+                for (const [code, info] of Object.entries(airlines)) {
+                    if (info && info.name) {
+                        airlineNameToCode.set(info.name.toLowerCase(), code);
+                    }
+                }
+                console.log(`Loaded ${airlineNameToCode.size} airline name-to-code mappings`);
+            } catch (e) {
+                console.error('Failed to load airline mapping:', e);
+            }
+        }
+
+        // Layer used to draw a hovered aircraft track (temporary)
+        let liveTracksLayer = L.layerGroup();
+        let persistentTracksLayer = L.layerGroup();
+        // Track groups per hex for incremental updates
+        let liveTrackGroups = new Map(); // hex -> LayerGroup
+        let longTrackGroups = new Map(); // hex -> LayerGroup
+        
+        // Add Live Tracks to the layers control
+        if (window.layersControl) {
+            window.layersControl.addOverlay(liveTracksLayer, "Live Tracks");
+        }
+        
+        // Expose for debugging
+        try { window.liveTrackGroups = liveTrackGroups; window.longTrackGroups = longTrackGroups; } catch (e) {}
+        
+        let liveTracksIntervalId = null;
+        const LIVE_TRACKS_POLL_MS = 15000; // increased from 7s to 15s to reduce server load
+
+        // Persistent tracks shown when user clicks with "Persist track on click" enabled
+        const persistentTracks = new Map(); // hex -> LayerGroup
+        try { window.persistentTracksLayer = persistentTracksLayer; window.persistentTracks = persistentTracks; } catch (e) {}
+        const PERSISTENT_TRACK_TTL_MS = 120 * 60 * 1000; // 2 hours
+        const PERSISTENT_TRACK_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+        const persistentTrackTimestamps = new Map();
+        const persistentTracksSetOriginal = persistentTracks.set.bind(persistentTracks);
+        const persistentTracksDeleteOriginal = persistentTracks.delete.bind(persistentTracks);
+        const persistentTracksClearOriginal = persistentTracks.clear.bind(persistentTracks);
+        persistentTracks.set = function (hex, value) {
+            const normalizedKey = (hex || '').toString().toLowerCase();
+            if (!normalizedKey) return persistentTracksSetOriginal.call(this, normalizedKey, value);
+            persistentTrackTimestamps.set(normalizedKey, Date.now());
+            return persistentTracksSetOriginal.call(this, normalizedKey, value);
+        };
+        persistentTracks.delete = function (hex) {
+            const normalizedKey = (hex || '').toString().toLowerCase();
+            const result = persistentTracksDeleteOriginal.call(this, normalizedKey);
+            persistentTrackTimestamps.delete(normalizedKey);
+            return result;
+        };
+        persistentTracks.clear = function () {
+            persistentTrackTimestamps.clear();
+            return persistentTracksClearOriginal.call(this);
+        };
+        // Temporary on-click tracks (shown when persist-on-click is NOT enabled)
+        const tempPersistentLayer = L.layerGroup();
+        try { window.tempPersistentLayer = tempPersistentLayer; } catch (e) {}
+        const TEMP_PERSIST_MS = 20 * 1000; // 20 seconds for temporary click tracks
+        // Long tracks layer (drawn from /api/track for visible hexes)
+        let longTracksLayer = L.layerGroup();
+        try { window.longTracksLayer = longTracksLayer; } catch (e) {}
+        let longTracksIntervalId = null;
+        const LONG_TRACKS_POLL_MS = 30000; // increased from 15s to 30s to reduce server load
+        const LONG_TRACKS_BATCH_SIZE = 32; // chunk size for parallel requests
+        // Initialize persisted indicator (safe now that persistentTracks exists)
+        if (typeof updatePersistedIndicator === 'function') updatePersistedIndicator();
+
+        // Client-side short TTL cache for per-hex track fetches to avoid repeated calls
+        const TRACK_CACHE_TTL_MS = 8000; // 8 seconds
+        const trackCache = new Map(); // key -> { ts, data }
+        const trackFetchPromises = new Map(); // key -> Promise
+
+        // Helper to determine which squawk API base to use. If an external squawk API is enabled
+        // via the UI, use that base; otherwise default to the local `/api` base.
+        function getSquawkApiBase() {
+            try {
+                const useExternal = document.getElementById('use-external-squawk') && document.getElementById('use-external-squawk').checked;
+                if (useExternal) {
+                    const v = (document.getElementById('squawk-api-base') ? document.getElementById('squawk-api-base').value : '').trim();
+                    if (v) return v;
+                }
+            } catch (e) {}
+            return '/api';
+        }
+
+        // Start polling the lightweight flights endpoint for a single aircraft (1 Hz)
+        function startFlightPolling(hex, positionObj) {
+            if (!hex) return;
+            const key = hex.toLowerCase();
+            if (flightPollers.has(key)) return; // already polling
+
+            async function pollOnce() {
+                // Limit concurrent requests to avoid backing up
+                if (pendingFlightRequests >= MAX_PENDING_FLIGHT_REQUESTS) {
+                    return;
+                }
+                
+                pendingFlightRequests++;
+                try {
+                    const res = await fetchWithTimeout(`/api/flight?icao=${encodeURIComponent(key)}`, {}, 3000);
+                    if (!res.ok) return;
+                    const payload = await res.json();
+                    const fl = payload && payload.flight;
+                    if (!fl) return;
+                    // Merge dynamic flight fields into the live position object used for tooltip/popups
+                    try {
+                        mergePreferExisting(positionObj, fl);
+                        // Ensure squawk/transponder fields are normalized and stored under both names
+                        try {
+                            const v = fl.sqk || fl.squawk || fl.transponder || fl.transponder_code || fl.squawk_code || null;
+                            if (v) {
+                                positionObj.sqk = v;
+                                positionObj.squawk = positionObj.squawk || v;
+                                lastSquawk.set(key, v);
+                            }
+                        } catch (e) {}
+                    } catch (e) {}
+                    // Update marker tooltip/popup if marker exists
+                    const marker = liveMarkers.get(key)?.marker;
+                    if (marker) {
+                        const html = buildHoverTooltipHTML(positionObj);
+                        try { const tt = marker.getTooltip && marker.getTooltip(); if (tt && tt.setContent) tt.setContent(html); }
+                        catch (e) {}
+                        try { const pp = marker.getPopup && marker.getPopup(); if (pp && pp.setContent) pp.setContent(html); } catch (e) {}
+                    }
+                } catch (err) {
+                    // silent
+                } finally {
+                    pendingFlightRequests--;
+                }
+            }
+
+            // Initial immediate poll, then every 1s
+            pollOnce();
+            const id = setInterval(pollOnce, 1000);
+            flightPollers.set(key, id);
+        }
+
+        function stopFlightPolling(hex) {
+            if (!hex) return;
+            const key = hex.toLowerCase();
+            const id = flightPollers.get(key);
+            if (id) {
+                clearInterval(id);
+                flightPollers.delete(key);
+            }
+        }
+
+        // POST /api/v2/track helper - V2 batch API
+        async function fetchTracksBatch(trackRequests) {
+            if (!Array.isArray(trackRequests) || trackRequests.length === 0) return [];
+            try {
+                const res = await fetchWithTimeout('/api/v2/track', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ requests: trackRequests })
+                });
+                if (!res.ok) throw new Error(`V2 track batch ${res.status}`);
+                const payload = await res.json();
+                // Return array of track results in same order as requests
+                return payload.results ? payload.results.map(item => item ? item.track || [] : []) : [];
+            } catch (err) {
+                console.warn('V2 track batch fetch failed', err);
+                return trackRequests.map(() => []); // Return empty arrays for all requests on error
+            }
+        }
+
+        // Fetch squawk for a list of hexes (uses GET /api/squawk?hex=...) and returns map { hex: squawk }
+        async function fetchSquawksFor(hexList) {
+            const result = {};
+            if (!Array.isArray(hexList) || hexList.length === 0) return result;
+            // Check cache first
+            const toFetch = [];
+            hexList.forEach(h => {
+                const lk = (h || '').toString().toLowerCase();
+                const cached = squawkCache.get(lk);
+                if (cached && (Date.now() - cached.ts) < BATCH_SQUAWK_TTL) {
+                    result[lk] = cached.squawk;
+                } else {
+                    toFetch.push(lk);
+                }
+            });
+            // Fetch missing squawks in parallel (small numbers)
+            // Determine API base: allow optional external API configured in UI
+            const apiBase = getSquawkApiBase();
+            const promises = toFetch.map(async (lk) => {
+                try {
+                    const url = `${apiBase.replace(/\/$/, '')}/squawk?hex=${encodeURIComponent(lk)}`;
+                    const res = await fetchWithTimeout(url);
+                    if (!res.ok) return null;
+                    const payload = await res.json();
+                    const sq = payload && (payload.squawk || payload.sqk || null);
+                    squawkCache.set(lk, { ts: Date.now(), squawk: sq });
+                    result[lk] = sq;
+                } catch (e) {
+                    // don't fail entire batch
+                    squawkCache.set(lk, { ts: Date.now(), squawk: null });
+                    result[lk] = null;
+                }
+            });
+            await Promise.all(promises);
+            return result;
+        }
+
+        // Fetch a single squawk value, retrying for up to `timeoutMs` (default 1000ms) at `intervalMs` (default 200ms).
+        // Returns the squawk string or null if none available within timeout. Updates squawkCache.
+        async function fetchSquawkWithWait(hex, timeoutMs = 1000, intervalMs = 200) {
+            if (!hex) return null;
+            const lk = hex.toString().toLowerCase();
+            // check cache first
+            const cached = squawkCache.get(lk);
+            if (cached && (Date.now() - cached.ts) < BATCH_SQUAWK_TTL) return cached.squawk;
+
+            const start = Date.now();
+            while ((Date.now() - start) < timeoutMs) {
+                try {
+                    const apiBase = getSquawkApiBase();
+                    const res = await fetchWithTimeout(`${apiBase.replace(/\/$/, '')}/squawk?hex=${encodeURIComponent(lk)}`);
+                    if (res && res.ok) {
+                        try {
+                            const payload = await res.json();
+                            const sq = payload && (payload.squawk || payload.sqk || null);
+                            squawkCache.set(lk, { ts: Date.now(), squawk: sq });
+                            if (sq) {
+                                lastSquawk.set(lk, sq);
+                                return sq;
+                            }
+                        } catch (e) {
+                            squawkCache.set(lk, { ts: Date.now(), squawk: null });
+                        }
+                    }
+                } catch (e) {
+                    // ignore transient network errors
+                }
+                // wait before retrying
+                await new Promise(r => setTimeout(r, intervalMs));
+            }
+            // final attempt: return whatever is in cache (could be null)
+            const final = squawkCache.get(lk);
+            return final ? final.squawk : null;
+        }
+
+        
+
+        // Start/stop periodic batch polling of visible aircraft (merges results into tooltips)
+        function startBatchPollingVisibleFlights() {
+            if (batchPollIntervalId) return;
+            // initial run then interval
+            runBatchPollOnce();
+            batchPollIntervalId = setInterval(runBatchPollOnce, BATCH_POLL_INTERVAL_MS);
+        }
+
+        // Start/stop long tracks fetch (always enabled by default)
+        function startLongTracksPolling() {
+            if (longTracksIntervalId) return;
+            if (!window.map || typeof window.map.hasLayer !== 'function') {
+                console.warn('startLongTracksPolling: map not ready');
+                return;
+            }
+            // initial run
+            fetchAndDrawLongTracks();
+            longTracksIntervalId = setInterval(fetchAndDrawLongTracks, LONG_TRACKS_POLL_MS);
+            if (!window.map.hasLayer(longTracksLayer)) longTracksLayer.addTo(window.map);
+        }
+
+        function stopLongTracksPolling() {
+            if (longTracksIntervalId) {
+                clearInterval(longTracksIntervalId);
+                longTracksIntervalId = null;
+            }
+            // Keep long tracks layer visible (mandatory) - just clear data
+            try { longTracksLayer.clearLayers(); } catch (e) {}
+        }
+
+        function startLiveTracksPolling() {
+            if (liveTracksIntervalId) return;
+            if (!window.map || typeof window.map.hasLayer !== 'function') {
+                console.warn('startLiveTracksPolling: map not ready');
+                return;
+            }
+            // initial run
+            fetchAndDrawLiveTracks();
+            liveTracksIntervalId = setInterval(fetchAndDrawLiveTracks, LIVE_TRACKS_POLL_MS);
+            if (!window.map.hasLayer(liveTracksLayer)) liveTracksLayer.addTo(window.map);
+        }
+
+        function stopLiveTracksPolling() {
+            if (liveTracksIntervalId) {
+                clearInterval(liveTracksIntervalId);
+                liveTracksIntervalId = null;
+            }
+            try { liveTracksLayer.clearLayers(); if (map.hasLayer(liveTracksLayer)) map.removeLayer(liveTracksLayer); } catch (e) {}
+        }
+
+        function toggleLivePositions() {
+            // Live positions are always enabled now
+            startLivePositionsPolling();
+        }
+
+        function startLivePositionsPolling() {
+            if (liveIntervalId || socket) return; // Already running
+            
+            // Try to establish socket connection first
+            try {
+                socket = io('http://localhost:3003');
+                
+                socket.on('connect', () => {
+                    console.info('Heatmap socket connected successfully');
+                    setLiveStatus('Connected (Socket)', 'success');
+                });
+                
+                socket.on('disconnect', (reason) => {
+                    console.warn('Heatmap socket disconnected:', reason);
+                    setLiveStatus('Disconnected', 'error');
+                });
+                
+                socket.on('connect_error', (err) => {
+                    console.error('Heatmap socket connect_error:', err);
+                    setLiveStatus('Connection Error', 'error');
+                    // Fall back to polling if socket fails
+                    fallbackToPolling();
+                });
+                
+                socket.on('liveUpdate', (data) => {
+                    try {
+                        // Process live update data similar to fetchLivePositions
+                        updateLivePositionsFromSocket(data);
+                    } catch (e) {
+                        console.error('Error processing socket liveUpdate:', e);
+                    }
+                });
+                
+                // Removed initial fetch to populate data - only show live positions from WebSocket
+                
+            } catch (e) {
+                console.warn('Socket.IO not available, falling back to polling:', e);
+                fallbackToPolling();
+            }
+            
+            if (!map.hasLayer(liveLayer)) liveLayer.addTo(map);
+        }
+        
+        function fallbackToPolling() {
+            if (liveIntervalId) return; // Already polling
+            console.info('Falling back to polling for live positions');
+            setLiveStatus('Polling', 'warning');
+            // Start polling without initial fetch - only show live positions
+            liveIntervalId = setInterval(fetchLivePositions, 1000); // poll every 1 second
+        }
+
+        function stopLivePositionsPolling() {
+            // Stop polling if active
+            if (liveIntervalId) {
+                clearInterval(liveIntervalId);
+                liveIntervalId = null;
+            }
+            // Disconnect socket if active
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+                setLiveStatus('Disconnected', 'idle');
+            }
+            clearLiveLayer();
+        }
+
+        async function fetchAndDrawLongTracks() {
+            if (!window.map || typeof window.map.getBounds !== 'function') {
+                console.warn('fetchAndDrawLongTracks: map not ready');
+                return;
+            }
+            try {
+                setTrackStatus('Loading...', 'loading');
+                // gather visible hexes from liveMarkers
+                const bounds = window.map.getBounds();
+                const visible = [];
+                liveMarkers.forEach((md, hex) => {
+                    try {
+                        const marker = (md && md.marker) ? md.marker : md;
+                        const latlng = marker && marker.getLatLng ? marker.getLatLng() : null;
+                        if (latlng && bounds.contains(latlng)) {
+                            const lk = (hex || '').toString().toLowerCase();
+                            visible.push(lk);
+                        }
+                    } catch (e) {}
+                });
+                if (visible.length === 0) {
+                    // nothing to draw
+                    setTrackStatus('Idle', 'idle');
+                    return;
+                }
+
+                // clear current long tracks before redrawing
+                longTracksLayer.clearLayers();
+
+                // Use the UI-selected minutes window
+                const minutesElem = document.getElementById('track-window-input');
+                const minutes = minutesElem ? parseInt(minutesElem.value, 10) || 1 : 1;
+
+                // Use V2 batch API for long tracks (respect 20 request limit)
+                let anyDrawn = false;
+                for (let i = 0; i < visible.length; i += 20) {
+                    const chunk = visible.slice(i, i + 20);
+                    const trackRequests = chunk.map(hx => ({ hex: hx, minutes }));
+                    const trackArrays = await fetchTracksBatch(trackRequests);
+                    trackArrays.forEach((pts, idx) => {
+                        try {
+                            if (pts && pts.length >= 2) {
+                                // Compute vertical rate per point when timestamps and alt available
+                                addVerticalRatesToTrackPoints(pts);
+
+                                // Simplify if essentially straight
+                                if (maxTrackAngularChange(pts) < 10) {
+                                    // reduce to endpoints to simplify rendering
+                                    pts = [pts[0], pts[pts.length - 1]];
+                                }
+
+                                // Draw colored segments based on vertical rate between points
+                                const segments = [];
+                                let currentSegment = { points: [pts[0]], color: getVerticalRateColor(pts[0].vertical_rate || 0) };
+                                for (let j = 1; j < pts.length; j++) {
+                                    const point = pts[j];
+                                    const color = getVerticalRateColor(point.vertical_rate || 0);
+                                    if (color === currentSegment.color) {
+                                        currentSegment.points.push(point);
+                                    } else {
+                                        segments.push(currentSegment);
+                                        currentSegment = { points: [point], color };
+                                    }
+                                }
+                                segments.push(currentSegment);
+
+                                // Draw each segment
+                                segments.forEach(segment => {
+                                    if (segment.points.length >= 2) {
+                                        const latlngs = densifyTrackPoints(segment.points, 0.1);
+                                        const poly = L.polyline(latlngs, { color: segment.color, weight: 3, opacity: 0.95, pane: 'persistentPane', interactive: false });
+                                        longTracksLayer.addLayer(poly);
+                                        anyDrawn = true;
+                                    }
+                                });
+
+                                // Start/end markers for context (placed on persistentPane)
+                                const startLatLng = [pts[0].lat, pts[0].lon];
+                                const endLatLng = [pts[pts.length - 1].lat, pts[pts.length - 1].lon];
+                                const start = L.circleMarker(startLatLng, { radius: 4, fillColor: '#00ff00', color: '#006600', weight: 1, fillOpacity: 0.95, pane: 'persistentPane' });
+                                const end = L.circleMarker(endLatLng, { radius: 4, fillColor: '#ff0000', color: '#660000', weight: 1, fillOpacity: 0.95, pane: 'persistentPane' });
+                                const lg = L.layerGroup([poly, start, end]);
+                                // remove old long track for this hex if present
+                                try { if (longTrackGroups.has(chunk[idx])) { const old = longTrackGroups.get(chunk[idx]); longTracksLayer.removeLayer(old); longTrackGroups.delete(chunk[idx]); } } catch (e) {}
+                                longTracksLayer.addLayer(lg);
+                                longTrackGroups.set(chunk[idx], lg);
+                                anyDrawn = true;
+                            }
+                        } catch (e) { console.warn('Long track segment draw error', e); }
+                    });
+                }
+                if (!anyDrawn) { longTracksLayer.clearLayers(); setTrackStatus('Idle', 'idle'); }
+
+                // ensure the layer is on the map
+                if (!map.hasLayer(longTracksLayer)) longTracksLayer.addTo(map);
+                try { updateDebugInfo(); } catch(e) {}
+                setTrackStatus(formatOkWithTime('OK (Long)'), 'ok');
+            } catch (err) {
+                console.warn('Long tracks fetch/draw error', err);
+                setTrackStatus('Error', 'error');
+            }
+        }
+
+        // Fetch and draw short live tracks for currently active flights (visible on the map)
+        async function fetchAndDrawLiveTracks() {
+            if (!window.map || typeof window.map.getBounds !== 'function') {
+                console.warn('fetchAndDrawLiveTracks: map not ready');
+                return;
+            }
+            try {
+                setTrackStatus('Loading...', 'loading');
+                // gather visible hexes from liveMarkers
+                const bounds = window.map.getBounds();
+                const visible = [];
+                liveMarkers.forEach((md, hex) => {
+                    try {
+                        const marker = (md && md.marker) ? md.marker : md;
+                        const latlng = marker && marker.getLatLng ? marker.getLatLng() : null;
+                        if (latlng && bounds.contains(latlng)) {
+                            const lk = (hex || '').toString().toLowerCase();
+                            visible.push(lk);
+                        }
+                    } catch (e) {}
+                });
+                if (visible.length === 0) {
+                    // nothing to draw
+                    stopLiveTracksPolling();
+                    setTrackStatus('Idle', 'idle');
+                    return;
+                }
+
+                // clear current live tracks before redrawing
+                liveTracksLayer.clearLayers();
+
+                // Use the UI-selected minutes window
+                const minutesElem = document.getElementById('track-window-input');
+                const minutes = minutesElem ? Math.max(1, parseInt(minutesElem.value, 10) || 1) : 1;
+
+                // Use V2 batch API for tracks (respect 20 request limit)
+                let anyDrawn = false;
+                // Parallelize chunk requests for responsiveness
+                const chunkPromises = [];
+                for (let i = 0; i < visible.length; i += 20) {
+                    const chunk = visible.slice(i, i + 20);
+                    const trackRequests = chunk.map(hx => ({ hex: hx, minutes }));
+                    chunkPromises.push(fetchTracksBatch(trackRequests).then(trackArrays => ({ chunk, trackArrays })).catch(e => ({ chunk, trackArrays: [], error: e })));
+                }
+                const chunkResults = await Promise.all(chunkPromises);
+                chunkResults.forEach(cr => {
+                    try {
+                        const { chunk, trackArrays, error } = cr;
+                        if (error) {
+                            console.warn('Track batch failed for chunk', chunk, error);
+                            return;
+                        }
+                        trackArrays.forEach((pts, idx) => {
+                            try {
+                                const hx = chunk[idx];
+                                // remove any existing group for this hex - we'll replace it
+                                if (liveTrackGroups.has(hx)) {
+                                    try { const old = liveTrackGroups.get(hx); liveTracksLayer.removeLayer(old); } catch (e) {}
+                                    liveTrackGroups.delete(hx);
+                                }
+
+                                if (pts && pts.length >= 2) {
+                                    // Compute vertical rate per point
+                                    addVerticalRatesToTrackPoints(pts);
+
+                                    // Simplify if essentially straight
+                                    if (maxTrackAngularChange(pts) < 10) pts = [pts[0], pts[pts.length - 1]];
+
+                                    // Create a group to hold all segments & markers for this hex
+                                    const hg = L.layerGroup();
+                                    const segments = [];
+                                    let currentSegment = { points: [pts[0]], color: getVerticalRateColor(pts[0].vertical_rate || 0) };
+                                    for (let i = 1; i < pts.length; i++) {
+                                        const point = pts[i];
+                                        const color = getVerticalRateColor(point.vertical_rate || 0);
+                                        if (color === currentSegment.color) { currentSegment.points.push(point); }
+                                        else { segments.push(currentSegment); currentSegment = { points: [point], color }; }
+                                    }
+                                    segments.push(currentSegment);
+
+                                    // Draw each segment into the group
+                                    segments.forEach(segment => {
+                                        if (segment.points.length >= 2) {
+                                            const latlngs = densifyTrackPoints(segment.points, 0.1);
+                                            const poly = L.polyline(latlngs, { color: segment.color, weight: 3, opacity: 0.9, pane: 'livePane', interactive: false });
+                                            hg.addLayer(poly);
+                                            anyDrawn = true;
+                                        }
+                                    });
+
+                                    // Add start/end markers
+                                    const start = L.circleMarker([pts[0].lat, pts[0].lon], { radius: 3, fillColor: '#00ff00', color: '#006600', weight: 1, fillOpacity: 0.9, pane: 'livePane' });
+                                    const end = L.circleMarker([pts[pts.length - 1].lat, pts[pts.length - 1].lon], { radius: 3, fillColor: '#ff0000', color: '#660000', weight: 1, fillOpacity: 0.9, pane: 'livePane' });
+                                    hg.addLayer(start); hg.addLayer(end);
+
+                                    // Add to live tracks layer and record in map
+                                    liveTracksLayer.addLayer(hg);
+                                    liveTrackGroups.set(hx, hg);
+                                    anyDrawn = true;
+                                }
+                            } catch (e) { console.warn('Live track segment draw error', e); }
+                        });
+                    } catch (e) { console.warn('Error processing chunk result', e); }
+                });
+                if (!anyDrawn) { liveTracksLayer.clearLayers(); setTrackStatus('Idle', 'idle'); }
+                if (!map.hasLayer(liveTracksLayer)) liveTracksLayer.addTo(map);
+                try { updateDebugInfo(); } catch(e) {}
+                setTrackStatus(formatOkWithTime('OK (Live)'), 'ok');
+            } catch (err) {
+                console.warn('Live tracks fetch/draw error', err);
+                setTrackStatus('Error', 'error');
+            }
+        }
+
+        function stopBatchPollingVisibleFlights() {
+            if (batchPollIntervalId) {
+                clearInterval(batchPollIntervalId);
+                batchPollIntervalId = null;
+            }
+        }
+
+        async function runBatchPollOnce() {
+            if (batchPollInFlight) return; // avoid overlapping
+            if (!window.map || typeof window.map.getBounds !== 'function') {
+                console.warn('runBatchPollOnce: map not ready');
+                return;
+            }
+            try {
+                // Gather visible hex keys from liveMarkers that are inside map bounds
+                const bounds = window.map.getBounds();
+                const visible = [];
+                liveMarkers.forEach((md, hex) => {
+                    try {
+                        const marker = (md && md.marker) ? md.marker : md;
+                        const latlng = marker && marker.getLatLng ? marker.getLatLng() : null;
+                        if (latlng && bounds.contains(latlng)) {
+                            const lk = (hex || '').toString().toLowerCase();
+                            if (!flightsCache.has(lk) || (Date.now() - flightsCache.get(lk).ts) > BATCH_FLIGHT_TTL) {
+                                visible.push(lk);
+                            }
+                        }
+                    } catch (e) {}
+                });
+                // Include persisted tracks hexes as well so persisted tracks get enriched
+                try {
+                    persistentTracks.forEach((lg, hx) => {
+                        try {
+                            const lk = (hx || '').toString().toLowerCase();
+                            if (!visible.includes(lk) && (!flightsCache.has(lk) || (Date.now() - flightsCache.get(lk).ts) > BATCH_FLIGHT_TTL)) {
+                                visible.push(lk);
+                            }
+                        } catch (e) {}
+                    });
+                } catch (e) {}
+                if (visible.length === 0) return;
+                batchPollInFlight = true;
+                // chunk into batches
+                for (let i = 0; i < visible.length; i += BATCH_MAX_PER_REQUEST) {
+                    const chunk = visible.slice(i, i + BATCH_MAX_PER_REQUEST);
+                    const resMap = await fetchFlightsBatch(chunk);
+                    // Also fetch authoritative squawk values for these hexes and merge them
+                    let squawkMap = {};
+                    try {
+                        squawkMap = await fetchSquawksFor(chunk);
+                    } catch (e) {
+                        console.warn('Batch: failed to fetch squawks for chunk', e);
+                        squawkMap = {};
+                    }
+                    // merge into cache and update markers
+                        Object.keys(resMap).forEach(k => {
+                            try {
+                                let data = resMap[k];
+                                const lk = (k || '').toString().toLowerCase();
+                                // If we have a squawk for this hex from the squawkMap, ensure it's present on the flight data
+                                try {
+                                    const sqFromMap = (squawkMap && squawkMap[lk]) ? squawkMap[lk] : null;
+                                    if (sqFromMap) {
+                                        if (!data) data = {};
+                                        data.sqk = data.sqk || sqFromMap;
+                                        data.squawk = data.squawk || sqFromMap;
+                                        lastSquawk.set(lk, sqFromMap);
+                                    }
+                                } catch (e) {}
+                                flightsCache.set(lk, { ts: Date.now(), data });
+                                const marker = liveMarkers.get(lk)?.marker;
+                                if (data) {
+                                    // If we have a marker and it has the stored position object, merge full flight object
+                                    if (marker) {
+                                        try {
+                                            const pos = marker._posData || { hex: lk };
+                                            // Merge returned flight fields into the live position object (preserve existing non-empty values)
+                                            mergePreferExisting(pos, data);
+                                            // Ensure squawk is propagated from lastSquawk if missing
+                                            try {
+                                                if (!pos.sqk && !pos.squawk && lastSquawk.has(lk)) {
+                                                    const v = lastSquawk.get(lk);
+                                                    pos.sqk = v;
+                                                    pos.squawk = pos.squawk || v;
+                                                }
+                                            } catch (e) {}
+                                            marker._posData = pos;
+                                            const html = buildHoverTooltipHTML(pos);
+                                            // Always prefer updating existing tooltip/popup content, else bind fallback
+                                            try {
+                                                const tt = marker.getTooltip && marker.getTooltip();
+                                                if (tt && tt.setContent) {
+                                                    tt.setContent(html);
+                                                    console.debug('Batch: set tooltip content for', lk);
+                                                } else {
+                                                    try {
+                                                        marker.bindTooltip(html, { direction: 'top', offset: [0, -10], sticky: true });
+                                                        console.debug('Batch: bound tooltip for', lk);
+                                                    } catch (e) { console.warn('Batch: failed to bind tooltip', lk, e); }
+                                                }
+                                            } catch (e) { console.warn('Batch: tooltip update error', lk, e); }
+
+                                            try {
+                                                const pp = marker.getPopup && marker.getPopup();
+                                                if (pp && pp.setContent) {
+                                                    pp.setContent(html);
+                                                    console.debug('Batch: set popup content for', lk);
+                                                } else {
+                                                    // bind popup as a fallback so detail is available on click
+                                                    try { marker.bindPopup(html); } catch (e) { /* ignore */ }
+                                                }
+                                            } catch (e) { console.warn('Batch: popup update error', lk, e); }
+                                        } catch (e) { console.warn('Batch: marker merge error', lk, e); }
+                                    }
+                                    // Update persisted track layer popups/tooltips if present
+                                    try {
+                                                if (persistentTracks.has(lk)) {
+                                            const lg = persistentTracks.get(lk);
+                                            // Build an enriched object for tooltips: prefer live marker data, then batch data, then aircraft cache
+                                            try {
+                                                const batchData = data || (flightsCache.get(lk) && flightsCache.get(lk).data) || {};
+                                                const aircraftCached = (aircraftInfoCache.get(lk) && aircraftInfoCache.get(lk).data) || {};
+                                                const liveData = (liveMarkers.get(lk)?.marker && liveMarkers.get(lk).marker._posData) || {};
+                                                const enrich = Object.assign({}, batchData, aircraftCached, liveData, { hex: lk });
+                                                // If we have a last seen squawk, ensure it's present if not in enrich
+                                                try {
+                                                    if (!enrich.sqk && !enrich.squawk && lastSquawk.has(lk)) {
+                                                        const v = lastSquawk.get(lk);
+                                                        enrich.sqk = v;
+                                                        enrich.squawk = enrich.squawk || v;
+                                                    }
+                                                } catch (e) {}
+                                                try { console.debug('Batch: enrich for', lk, enrich); } catch (e) {}
+                                                var html = buildHoverTooltipHTML(enrich);
+                                            } catch (e) {
+                                                console.warn('Batch: failed to build enriched tooltip for', lk, e);
+                                                var html = buildHoverTooltipHTML(Object.assign({ hex: lk }, data || {}));
+                                            }
+                                                lg.eachLayer(layer => {
+                                                try {
+                                                    // If a tooltip already exists, update its content; otherwise bind a new tooltip
+                                                    const tt = layer.getTooltip && layer.getTooltip();
+                                                    if (tt && tt.setContent) {
+                                                        try { tt.setContent(html); } catch (e) {}
+                                                        return;
+                                                    }
+                                                    // If a popup exists on the layer (polylines), update it instead
+                                                    const pp = layer.getPopup && layer.getPopup();
+                                                    if (pp && pp.setContent) {
+                                                        try { pp.setContent(html); } catch (e) {}
+                                                        return;
+                                                    }
+                                                    // Fallback: bind appropriate tooltip/popup
+                                                        if (layer instanceof L.CircleMarker || (layer.options && layer.options.radius)) {
+                                                        try { layer.bindTooltip(html, { direction: 'top', offset: [0, -8], sticky: true }); try { console.debug('Batch: bound tooltip on start/end for', lk); } catch (e) {} } catch (e) {}
+                                                    } else if (layer instanceof L.Polyline) {
+                                                        try { layer.bindTooltip(html, { direction: 'center', sticky: true, offset: [0, 0] }); try { console.debug('Batch: bound tooltip on polyline for', lk); } catch (e) {} } catch (e) {}
+                                                    }
+                                                } catch (e) {}
+                                            });
+                                        }
+                                    } catch (e) {}
+                                    // If no marker present (e.g., persisted-only), we still cached the data so when/if a marker appears it will be used
+                                }
+                            } catch (e) {}
+                        });
+                        // For any chunk hexes that did not return a flight result, still apply squawk if available
+                        try {
+                            for (const hx of chunk) {
+                                const lk = (hx || '').toString().toLowerCase();
+                                if (resMap && Object.prototype.hasOwnProperty.call(resMap, lk)) continue; // already handled
+                                const sq = squawkMap && squawkMap[lk] ? squawkMap[lk] : null;
+                                if (sq) {
+                                    // update lastSquawk and, if a marker exists, merge and update tooltip
+                                    try { lastSquawk.set(lk, sq); } catch (e) {}
+                                }
+                                try {
+                                    const marker = liveMarkers.get(lk)?.marker;
+                                    if (marker) {
+                                        const pos = marker._posData || { hex: lk };
+                                        pos.sqk = pos.sqk || sq;
+                                        pos.squawk = pos.squawk || sq;
+                                        marker._posData = pos;
+                                        const html = buildHoverTooltipHTML(pos);
+                                        try { const tt = marker.getTooltip && marker.getTooltip(); if (tt && tt.setContent) tt.setContent(html); } catch (e) {}
+                                        try { const pp = marker.getPopup && marker.getPopup(); if (pp && pp.setContent) pp.setContent(html); } catch (e) {}
+                                    }
+                                    // Update persisted tracks tooltips if present
+                                    if (persistentTracks.has(lk)) {
+                                        const lg = persistentTracks.get(lk);
+                                        const batchData = flightsCache.get(lk) && flightsCache.get(lk).data ? flightsCache.get(lk).data : {};
+                                        const aircraftCached = (aircraftInfoCache.get(lk) && aircraftInfoCache.get(lk).data) || {};
+                                        const liveData = (liveMarkers.get(lk)?.marker && liveMarkers.get(lk).marker._posData) || {};
+                                        const enrich = Object.assign({}, batchData, aircraftCached, liveData, { hex: lk });
+                                        if (!enrich.sqk && !enrich.squawk) { enrich.sqk = sq; enrich.squawk = sq; }
+                                        const html = buildHoverTooltipHTML(enrich);
+                                        lg.eachLayer(layer => {
+                                            try {
+                                                const tt = layer.getTooltip && layer.getTooltip();
+                                                if (tt && tt.setContent) { tt.setContent(html); return; }
+                                                const pp = layer.getPopup && layer.getPopup();
+                                                if (pp && pp.setContent) { pp.setContent(html); return; }
+                                                if (layer instanceof L.CircleMarker || (layer.options && layer.options.radius)) {
+                                                    layer.bindTooltip(html, { direction: 'top', offset: [0, -8], sticky: true });
+                                                } else if (layer instanceof L.Polyline) {
+                                                    layer.bindTooltip(html, { direction: 'center', sticky: true, offset: [0, 0] });
+                                                }
+                                            } catch (e) {}
+                                        });
+                                    }
+                                } catch (e) {}
+                            }
+                        } catch (e) { console.warn('Batch: error merging squawks for missing flight entries', e); }
+                }
+            } catch (err) {
+                console.warn('Batch poll error', err);
+            } finally {
+                batchPollInFlight = false;
+            }
+        }
+
+        function cacheKey(hex, minutes) { return `${hex}|${minutes}`; }
+
+        function getCachedTrack(hex, minutes) {
+            const key = cacheKey(hex, minutes);
+            const entry = trackCache.get(key);
+            if (!entry) return null;
+            if ((Date.now() - entry.ts) > TRACK_CACHE_TTL_MS) {
+                trackCache.delete(key);
+                return null;
+            }
+            return entry.data;
+        }
+
+        // Build rich tooltip HTML for a live position object
+        function buildHoverTooltipHTML(p) {
+            // Use multiple fallback field names commonly used by different sources
+            const callsign = p.flight || p.callsign || p.call || p.callsign_icao || p.flight_ident || '';
+            // Accept many transponder/squawk field variants and fallback to lastSquawk map if available
+            const hexKey = (p.hex || '').toString().toLowerCase();
+            const squawk = p.sqk || p.squawk || p.SQK || p.Squawk || p.transponder || p.transponder_code || p.squawk_code || (lastSquawk.has(hexKey) ? lastSquawk.get(hexKey) : '') || '';
+            const reg = p.registration || p.Registration || p.reg || p.Reg || p.tail || '';
+            const airline = p.airline || p.operator || p.operator_name || p.airline_name || p.airlineName || '';
+            // Altitude: accept many variants and convert meters to feet where provided
+            let altVal = null;
+            if (p.alt !== undefined) altVal = p.alt;
+            else if (p.altitude !== undefined) altVal = p.altitude;
+            else if (p.Alt !== undefined) altVal = p.Alt;
+            else if (p.Altitude !== undefined) altVal = p.Altitude;
+            else if (p.altitude_ft !== undefined) altVal = p.altitude_ft;
+            else if (p.max_alt_ft !== undefined) altVal = p.max_alt_ft;
+            else if (p.max_alt !== undefined) altVal = p.max_alt;
+            else if (p.alt_ft !== undefined) altVal = p.alt_ft;
+            else if (p.alt_baro !== undefined) altVal = p.alt_baro;
+            else if (p.altitude_m !== undefined) altVal = Number(p.altitude_m) * 3.28084;
+            else if (p.alt_m !== undefined) altVal = Number(p.alt_m) * 3.28084;
+            else altVal = '';
+
+            // Support 'FL350' and other string forms; try numeric conversion first
+            const altNum = Number(altVal);
+            let alt = '';
+            if (Number.isFinite(altNum)) {
+                alt = `${Math.round(altNum).toLocaleString()} ft`;
+            } else if (typeof altVal === 'string' && altVal.trim() !== '') {
+                // Flight level notation e.g. FL350 or other textual alt indicators
+                const fl = altVal.trim().match(/^FL(\d+)$/i);
+                if (fl && fl[1]) {
+                    const flFeet = Number(fl[1]) * 100;
+                    if (Number.isFinite(flFeet)) alt = `${flFeet.toLocaleString()} ft`;
+                    else alt = altVal.trim();
+                } else {
+                    alt = altVal.trim();
+                }
+            } else {
+                alt = '';
+            }
+
+            // Calculate vertical rate for color coding
+            let verticalRate = 0;
+            if (altNum && Number.isFinite(altNum)) {
+                const currentTime = p.timestamp ? Number(p.timestamp) : Date.now();
+                const prevData = verticalRateCache.get(hexKey);
+                if (prevData && prevData.altitude && prevData.timestamp) {
+                    const timeDiff = (currentTime - prevData.timestamp) / 1000; // seconds
+                    if (timeDiff > 30 && timeDiff < 300) { // Only calculate if between 30 seconds and 5 minutes
+                        const altDiff = altNum - prevData.altitude; // feet
+                        verticalRate = (altDiff / timeDiff) * 60; // feet per minute
+                    }
+                }
+                // Update cache
+                verticalRateCache.set(hexKey, {
+                    altitude: altNum,
+                    timestamp: currentTime
+                });
+            }
+
+            // Speed: accept gs, speed, groundSpeed, or max_speed_kt
+            const rawSpeed = (p.gs ?? p.speed ?? p.groundSpeed ?? p.GS ?? p.max_speed_kt ?? p.speed_kt ?? '');
+            const speedNum = Number(rawSpeed);
+            const speed = (rawSpeed !== '' && rawSpeed != null && Number.isFinite(speedNum)) ? `${speedNum.toLocaleString()} kt` : (rawSpeed || '');
+            // Track/heading fallbacks
+            const track = p.heading || p.track || p.course || p.true_track || '';
+            const lat = (p.lat || p.latitude || p.Lat) || '';
+            const lon = (p.lon || p.longitude || p.Lon) || '';
+            // Calculate age in seconds since last update (support many timestamp fields and seconds/ms formats)
+            function normalizeTimestamp(v) {
+                if (v === undefined || v === null || v === '') return null;
+                // numeric values
+                if (typeof v === 'number') {
+                    // values < 1e11 are seconds -> convert to ms
+                    return (v < 1e11) ? v * 1000 : v;
+                }
+                // numeric strings
+                const nv = Number(v);
+                if (!Number.isNaN(nv)) return (nv < 1e11) ? nv * 1000 : nv;
+                // date strings
+                const parsed = Date.parse(v);
+                if (!Number.isNaN(parsed)) return parsed;
+                return null;
+            }
+            const tsCandidate = (p.timestamp ?? p.ts ?? p.time ?? p.time_ts ?? p.time_utc ?? p.lastSeen ?? p.last_seen ?? p.t) || null;
+            const tsMs = normalizeTimestamp(tsCandidate);
+            const timeStr = (tsMs && Number.isFinite(tsMs)) ? (() => {
+                const ageSeconds = Math.floor((Date.now() - tsMs) / 1000);
+                // sanity: reject obviously invalid ages (in the far future or far past)
+                if (ageSeconds < 0 || ageSeconds > (5 * 365 * 24 * 3600)) return '—';
+                return `${ageSeconds}s ago`;
+            })() : '—';
+            // Aircraft type
+            const aircraftType = p.type || p.aircraft_type || p.t || p.TPE || '';
+
+            // Determine popup background color based on vertical rate
+            let popupBgColor = '#ffffff'; // default white
+            if (verticalRate > 500) {
+                popupBgColor = '#e8f5e8'; // light green for climbing
+            } else if (verticalRate < -300) {
+                popupBgColor = '#ffeaea'; // light red for descending
+            }
+
+            // Determine airline logo
+            let airlineLogoHtml = '';
+            if (airline) {
+                const airlineCode = airlineNameToCode.get(airline.toLowerCase());
+                if (airlineCode) {
+                    airlineLogoHtml = `<img src="/api/v2logos/${encodeURIComponent(airlineCode)}" alt="${airline}" style="max-width:40px;max-height:20px;margin-left:8px;vertical-align:middle;border-radius:2px;">`;
+                }
+            }
+
+            // Create FlightAware link
+            const hex = (p.hex || '').toUpperCase();
+            const flightAwareUrl = callsign 
+                ? `https://flightaware.com/live/flight/${encodeURIComponent(callsign)}`
+                : `https://flightaware.com/live/modes/${encodeURIComponent(hex.toLowerCase())}/ident`;
+            const displayText = `${hex}${callsign ? ' — ' + callsign : ''}`;
+
+            return `
+                <div style="min-width:200px; background-color:${popupBgColor}; border-radius:6px; padding:8px;">
+                    <strong><a href="${flightAwareUrl}" onclick="window.open('${flightAwareUrl}', '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes'); return false;" style="color:inherit;text-decoration:none;cursor:pointer;">${displayText}</a></strong>
+                    <div>Registration: <em>${reg || '—'}</em></div>
+                    <div>Type: <em>${aircraftType || '—'}</em></div>
+                    <div>Airline: <em>${airline || '—'}</em>${airlineLogoHtml}</div>
+                    <div>Squawk: <em>${squawk || '—'}</em></div>
+                    <div>Alt: <em>${alt || '—'}</em></div>
+                    <div>Speed: <em>${speed || '—'}</em></div>
+                    <div>Track: <em>${track !== '' ? track + '°' : '—'}</em></div>
+                    <div>Pos: <em>${lat ? (typeof lat === 'number' ? lat.toFixed(5) : lat) : '—'}, ${lon ? (typeof lon === 'number' ? lon.toFixed(5) : lon) : '—'}</em></div>
+                    <div>Age: <em>${timeStr}</em></div>
+                </div>`;
+        }
+
+        async function fetchTrackWithCache(hex, minutes) {
+            const key = cacheKey(hex, minutes);
+            const cached = getCachedTrack(hex, minutes);
+            if (cached) return { points: cached, cached: true };
+            if (trackFetchPromises.has(key)) return trackFetchPromises.get(key);
+
+            const promise = (async () => {
+                // Use track cache service for last 15 minutes (900 seconds)
+                if (minutes <= 15) {
+                    try {
+                        const res = await fetchWithTimeout(`/api/track-cache/track/${encodeURIComponent(hex)}`);
+                        if (res.ok) {
+                            const payload = await res.json();
+                            const pts = (payload.positions || []).map(t => ({
+                                lat: t.lat,
+                                lon: t.lon,
+                                alt: t.altitude || null
+                            }));
+                            trackCache.set(key, { ts: Date.now(), data: pts });
+                            setTimeout(() => {
+                                const e = trackCache.get(key);
+                                if (e && ((Date.now() - e.ts) >= TRACK_CACHE_TTL_MS)) trackCache.delete(key);
+                            }, TRACK_CACHE_TTL_MS + 500);
+                            return { points: pts, cached: false };
+                        }
+                    } catch (err) {
+                        // Fall through to regular API if cache fails
+                    }
+                }
+                
+                // Fallback to regular track API for longer periods or if cache fails
+                const res = await fetchWithTimeout(`/api/track?hex=${encodeURIComponent(hex)}&minutes=${minutes}`);
+                if (!res.ok) throw new Error(`Track API ${res.status}`);
+                const payload = await res.json();
+                // Normalize track points: accept several common field names and include altitude when available.
+                const pts = (payload.track || []).map(t => {
+                    const lat = (t.lat ?? t.latitude ?? t.Latitude ?? t.Lat);
+                    const lon = (t.lon ?? t.longitude ?? t.Longitude ?? t.Lon);
+                    if (lat == null || lon == null) return null;
+                    const nlat = Number(lat);
+                    const nlon = Number(lon);
+                    if (isNaN(nlat) || isNaN(nlon)) return null;
+                    const alt = (t.alt ?? t.altitude ?? t.Altitude ?? t.Alt ?? null);
+                    const nalt = (alt == null) ? null : (isNaN(Number(alt)) ? null : Number(alt));
+                    return { lat: nlat, lon: nlon, alt: nalt };
+                }).filter(Boolean);
+                trackCache.set(key, { ts: Date.now(), data: pts });
+                // Schedule a cleanup after TTL to avoid unbounded growth
+                setTimeout(() => {
+                    const e = trackCache.get(key);
+                    if (e && ((Date.now() - e.ts) >= TRACK_CACHE_TTL_MS)) trackCache.delete(key);
+                }, TRACK_CACHE_TTL_MS + 500);
+                return { points: pts, cached: false };
+            })();
+
+            trackFetchPromises.set(key, promise);
+            try {
+                const r = await promise;
+                return r;
+            } finally {
+                trackFetchPromises.delete(key);
+            }
+        }
+
+        function clearAllPersistentTracks() {
+            persistentTracks.forEach((lg, hex) => {
+                persistentTracksLayer.removeLayer(lg);
+            });
+            persistentTracks.clear();
+            updatePersistedIndicator();
+        }
+
+        function togglePersistentTracks() {
+            // Persistent tracks are always visible; ensure the layer is present and do not allow disabling
+            try {
+                if (window.map && persistentTracksLayer && !window.map.hasLayer(persistentTracksLayer)) {
+                    window.map.addLayer(persistentTracksLayer);
+                }
+            } catch (e) { console.warn('togglePersistentTracks noop failed', e); }
+        }
+
+        function updatePersistedIndicator() {
+            const el = document.getElementById('persisted-tracks-indicator');
+            const listEl = document.getElementById('persisted-tracks-list');
+            if (!el) return;
+            const keys = [...persistentTracks.keys()];
+            el.textContent = `${keys.length}`;
+            if (listEl) {
+                listEl.textContent = keys.length ? keys.join(', ') : '';
+            }
+        }
+
+        function cleanupExpiredPersistentTracks() {
+            const now = Date.now();
+            let removed = false;
+            persistentTrackTimestamps.forEach((ts, hex) => {
+                if ((now - ts) >= PERSISTENT_TRACK_TTL_MS) {
+                    if (persistentTracks.has(hex)) {
+                        const lg = persistentTracks.get(hex);
+                        try { persistentTracksLayer.removeLayer(lg); } catch (e) {}
+                        persistentTracks.delete(hex);
+                        removed = true;
+                    } else {
+                        persistentTrackTimestamps.delete(hex);
+                    }
+                }
+            });
+            if (removed) updatePersistedIndicator();
+        }
+
+        cleanupExpiredPersistentTracks();
+        setInterval(cleanupExpiredPersistentTracks, PERSISTENT_TRACK_CLEANUP_INTERVAL_MS);
+
+        // Update debug panel with lastSquawk and lastPositions for a hex
+        function updateDebugPanel(hex) {
+            const el = document.getElementById('debug-panel');
+            if (!el) return;
+            if (!hex) {
+                el.innerHTML = 'No hex selected';
+                return;
+            }
+            const k = (hex || '').toString().toLowerCase();
+            const sq = lastSquawk.has(k) ? lastSquawk.get(k) : '—';
+            const positions = lastPositions.get(k) || [];
+            const posHtml = positions.length ? positions.map(p => `${(typeof p[0] === 'number' ? p[0].toFixed(5) : p[0])}, ${(typeof p[1] === 'number' ? p[1].toFixed(5) : p[1])}`).join('<br>') : '—';
+            let html = `<div style="line-height:1.2"><strong>${k.toUpperCase()}</strong><br><span>Squawk: <em>${sq}</em></span><br><span>Positions:<br>${posHtml}</span></div>`;
+            if (window.debugDumpEnabled) {
+                // Add full JSON dumps for marker._posData, flightsCache, aircraftInfoCache
+                try {
+                    const marker = liveMarkers.get(k)?.marker;
+                    const markerData = marker && marker._posData ? marker._posData : null;
+                    const flightCacheData = flightsCache.get(k) ? flightsCache.get(k).data : null;
+                    const aircraftCacheData = aircraftInfoCache.get(k) ? aircraftInfoCache.get(k).data : null;
+                    const dump = {
+                        marker: markerData,
+                        flightsCache: flightCacheData,
+                        aircraftInfoCache: aircraftCacheData
+                    };
+                    const dumpStr = JSON.stringify(dump, null, 2);
+                    html += `<pre style="max-height:160px;overflow:auto;background:#111;padding:8px;border-radius:4px;margin-top:6px;color:#ddd;font-size:11px">${escapeHtml(dumpStr)}</pre>`;
+                } catch (e) {
+                    html += `<div style="color:#f66">Failed to render dump: ${e.message}</div>`;
+                }
+            }
+            el.innerHTML = html;
+        }
+
+        // Show a transient colored marker at a point for a short duration (used for squawk/track change indicators)
+        function showTransientMarker(latlng, color = 'yellow', duration = 4000, radius = 5, pane = 'livePane') {
+            try {
+                if (!latlng) return null;
+                const m = L.circleMarker(latlng, { radius: radius, fillColor: color, color: color, weight: 1, fillOpacity: 0.95, pane: pane });
+                m.addTo(map);
+                setTimeout(() => {
+                    try { if (map.hasLayer(m)) map.removeLayer(m); } catch (e) {}
+                }, duration);
+                return m;
+            } catch (e) { return null; }
+        }
+
+        // toggle for showing full debug dumps
+        window.debugDumpEnabled = false;
+        function toggleDebugDump() {
+            window.debugDumpEnabled = !window.debugDumpEnabled;
+            const btn = document.getElementById('toggle-debug-dump');
+            if (btn) btn.textContent = window.debugDumpEnabled ? 'Hide Debug Dump' : 'Show Debug Dump';
+            // refresh current panel
+            try { updateDebugPanel(hoverTrackHex || [...persistentTracks.keys()][0] || null); } catch (e) {}
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        // Merge helper: copy only non-null, non-empty values from source into target
+        function mergePreferExisting(target, source) {
+            if (!target || !source) return target || source || {};
+            Object.keys(source).forEach(k => {
+                try {
+                    const v = source[k];
+                    if (v === undefined || v === null) return;
+                    if (typeof v === 'string' && v.trim() === '') return;
+                    const existing = target[k];
+                    if (existing === undefined || existing === null || (typeof existing === 'string' && existing.trim() === '')) {
+                        target[k] = v;
+                    }
+                } catch (e) {}
+            });
+            return target;
+        }
+
+        // Create an aircraft SVG icon (color can be changed)
+        function createAircraftIcon(color = '#ff3300', size = 50, rotation = 0) {
+            // Enforce minimum size of 50x50 pixels
+            const finalSize = Math.max(size, 50);
+
+            // Use new detailed aircraft SVG icon
+            let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${finalSize}" height="${finalSize}" viewBox="0 0 36 36">
+                <defs>
+                    <linearGradient id="aircraftBodyGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:${color};stop-opacity:1" />
+                        <stop offset="50%" style="stop-color:${color};stop-opacity:0.9" />
+                        <stop offset="100%" style="stop-color:${color};stop-opacity:0.7" />
+                    </linearGradient>
+                    <linearGradient id="wingGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" style="stop-color:#f0f0f0;stop-opacity:1" />
+                        <stop offset="100%" style="stop-color:#cccccc;stop-opacity:1" />
+                    </linearGradient>
+                </defs>
+
+                <!-- Main fuselage/body -->
+                <ellipse cx="18" cy="18" rx="4.5" ry="14" fill="url(#aircraftBodyGradient)" stroke="#ffffff" stroke-width="0.8"/>
+
+                <!-- Wings (main) -->
+                <rect x="6" y="16.5" width="24" height="3" rx="1" fill="url(#wingGradient)" stroke="#ffffff" stroke-width="0.5"/>
+                <rect x="7" y="17" width="22" height="2" rx="0.5" fill="${color}" opacity="0.9"/>
+
+                <!-- Tail section -->
+                <rect x="16" y="4" width="4" height="8" rx="0.5" fill="url(#aircraftBodyGradient)" stroke="#ffffff" stroke-width="0.5"/>
+                <rect x="16.5" y="4.5" width="3" height="7" rx="0.3" fill="${color}" opacity="0.8"/>
+
+                <!-- Vertical stabilizer -->
+                <rect x="17.2" y="2" width="1.6" height="6" rx="0.2" fill="url(#wingGradient)" stroke="#ffffff" stroke-width="0.3"/>
+                <rect x="17.4" y="2.2" width="1.2" height="5.6" rx="0.1" fill="${color}" opacity="0.9"/>
+
+                <!-- Horizontal stabilizers -->
+                <rect x="14" y="5" width="8" height="2" rx="0.3" fill="url(#wingGradient)" stroke="#ffffff" stroke-width="0.3"/>
+                <rect x="14.5" y="5.2" width="7" height="1.6" rx="0.2" fill="${color}" opacity="0.8"/>
+
+                <!-- Engines (turbofan style) -->
+                <circle cx="9" cy="18" r="2" fill="#333333" stroke="#ffffff" stroke-width="0.3"/>
+                <circle cx="9" cy="18" r="1.2" fill="#666666"/>
+                <circle cx="27" cy="18" r="2" fill="#333333" stroke="#ffffff" stroke-width="0.3"/>
+                <circle cx="27" cy="18" r="1.2" fill="#666666"/>
+
+                <!-- Cockpit windows -->
+                <rect x="16" y="7" width="4" height="3" rx="2" fill="#87ceeb" opacity="0.8" stroke="#ffffff" stroke-width="0.2"/>
+                <rect x="16.5" y="7.5" width="3" height="2" rx="1.5" fill="#4682b4" opacity="0.6"/>
+
+                <!-- Wing flaps/ailerons (subtle) -->
+                <rect x="8" y="19.5" width="4" height="1" rx="0.2" fill="#666666" opacity="0.7"/>
+                <rect x="24" y="19.5" width="4" height="1" rx="0.2" fill="#666666" opacity="0.7"/>
+
+                <!-- Landing gear doors (subtle) -->
+                <rect x="12" y="30" width="2" height="1.5" rx="0.3" fill="#666666" opacity="0.5"/>
+                <rect x="22" y="30" width="2" height="1.5" rx="0.3" fill="#666666" opacity="0.5"/>
+            </svg>`;
+
+            const html = `<div style="transform: rotate(${rotation}deg); width: ${finalSize}px; height:${finalSize}px; display:flex; align-items:center; justify-content:center">${svg}</div>`;
+            return L.divIcon({
+                html,
+                className: 'aircraft-icon',
+                iconSize: [finalSize, finalSize],
+                iconAnchor: [finalSize/2, finalSize/2]
+            });
+        }
+
+        // Add minimal CSS for aircraft icons
+        const style = document.createElement('style');
+        style.innerHTML = `
+            .aircraft-icon svg {
+                display:block;
+                filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.3));
+            }
+            .aircraft-icon {
+                pointer-events: auto;
+                border-radius: 4px;
+                transition: transform 0.2s ease;
+            }
+            .aircraft-icon:hover {
+                transform: scale(1.1);
+            }
+            .aircraft-logo-icon img {
+                display:block;
+                filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.3));
+            }
+            .aircraft-logo-icon {
+                pointer-events:auto;
+                border-radius: 4px;
+                transition: transform 0.2s ease;
+            }
+            .aircraft-logo-icon:hover {
+                transform: scale(1.1);
+            }
+        `;
+        document.head.appendChild(style);
+        function clearLiveLayer() {
+            if (liveLayer) {
+                // remove layer from map and clear stored markers
+                liveLayer.clearLayers();
+                if (map.hasLayer(liveLayer)) map.removeLayer(liveLayer);
+            }
+            // remove and forget markers
+            liveMarkers.forEach((m) => {
+                try { if (map.hasLayer(m)) map.removeLayer(m); } catch (e) {}
+            });
+            liveMarkers.clear();
+        }
+
+        async function fetchLivePositions() {
+            // Prevent concurrent requests
+            if (isFetchingPositions) {
+                console.log('Skipping fetchLivePositions - already in progress');
+                return;
+            }
+            isFetchingPositions = true;
+            try {
+                setLiveStatus('Fetching...', 'loading');
+                // reuse windowToHours helper
+                function windowToHours(w) {
+                    if (!w) return 24;
+                    if (w === 'all') return 744;
+                    if (w.endsWith('d')) {
+                        const days = parseInt(w.replace('d',''), 10);
+                        return isNaN(days) ? 24 : days * 24;
+                    }
+                    if (w.endsWith('h')) {
+                        const hrs = parseInt(w.replace('h',''), 10);
+                        return isNaN(hrs) ? 24 : hrs;
+                    }
+                    return 24;
+                }
+                // When showing live positions, prefer a short lookback so we only
+                // display currently active aircraft. The main `time-window` UI
+                // controls the heatmap grid and may be set to large ranges (24h,
+                // 7d). Override that for live polling to avoid plotting historical
+                // positions as live markers.
+                let hours = windowToHours(timeWindow);
+                // Live positions are always enabled, so always use a short window (1 hour) for live marker polling
+                hours = 1;
+                // Fetch live positions from backend `/api/positions` using selected time window
+                const res = await fetchWithTimeout(`/api/positions?hours=${hours}`);
+                if (!res.ok) throw new Error(`Positions API error: ${res.status}`);
+                const payload = await res.json();
+                // Server returns { aircraftCount, positions } — normalize to an array
+                let positions = Array.isArray(payload.positions) ? payload.positions : (Array.isArray(payload) ? payload : []);
+
+                // Filter positions to only show currently live aircraft.
+                // Build a map of positions grouped by hex and keep the most recent
+                // point per hex. Also seed short tail points from recent history so
+                // the live track (tail) can be drawn without showing long historical
+                // data. Use a short recency window (90 seconds) to determine "live".
+                try {
+                    const RECENT_MS = 10 * 1000; // 10 seconds - only truly live aircraft
+                    const nowTs = Date.now();
+                    const positionsByHex = new Map();
+                    positions.forEach(p => {
+                        const hx = (p.hex || p.HEX || p.icao || p.icao24 || '').toLowerCase();
+                        const ts = p.timestamp || p.ts || p.time || 0;
+                        if (!hx) return;
+                        if (!positionsByHex.has(hx)) positionsByHex.set(hx, []);
+                        positionsByHex.get(hx).push(Object.assign({}, p, { timestamp: ts }));
+                    });
+
+                    const filtered = [];
+                    for (const [hex, arr] of positionsByHex.entries()) {
+                        // Sort descending by timestamp so arr[0] is newest
+                        arr.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                        const latest = arr[0];
+                        if (!latest) continue;
+                        
+                        // Only apply recency filtering for small time windows (1 hour or less)
+                        // For historical views, show all aircraft regardless of when they were last seen
+                        if (hours <= 1 && (latest.timestamp || nowTs) < (nowTs - RECENT_MS)) continue;
+
+                        // Seed short trail points (chronological order) from most recent
+                        try {
+                            const pts = arr.slice(0, LAST_POSITIONS_COUNT).map(p => [p.lat ?? p.Latitude ?? p.latitude, p.lon ?? p.Longitude ?? p.longitude]).reverse();
+                            if (pts && pts.length) lastPositions.set(hex, pts);
+                        } catch (e) {}
+
+                        filtered.push(latest);
+                    }
+
+                    positions = filtered;
+                } catch (e) {
+                    // If filtering fails for any reason, fall back to unfiltered list
+                    console.warn('Live positions filtering failed', e);
+                }
+
+                // Prefetch aircraft info for all visible hexes using batch endpoint to reduce requests
+                try {
+                    const needed = [];
+                    const seenSet = new Set();
+                    positions.forEach(p => {
+                        const hx = (p.hex || '').toLowerCase();
+                        if (!hx) return;
+                        if (seenSet.has(hx)) return;
+                        seenSet.add(hx);
+                        const cached = aircraftInfoCache.get(hx);
+                        if (!cached || !cached.data) {
+                            needed.push(hx);
+                        }
+                    });
+                    if (needed.length > 0) {
+                        // POST { icao24: [...] } expected by server
+                        const batchRes = await fetchWithTimeout('/api/aircraft/batch', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ icao24: needed })
+                        });
+                        if (batchRes.ok) {
+                            const batchPayload = await batchRes.json();
+                            const results = batchPayload.results || {};
+                            Object.keys(results).forEach(k => {
+                                const lk = k.toLowerCase();
+                                aircraftInfoCache.set(lk, { ts: Date.now(), data: results[k] });
+                            });
+                            // mark not-found entries to avoid repeated requests
+                            needed.forEach(h => {
+                                const lk = h.toLowerCase();
+                                if (!aircraftInfoCache.has(lk)) aircraftInfoCache.set(lk, { ts: Date.now(), data: null });
+                            });
+                        }
+                    }
+                } catch (err) {
+                    console.warn('Batch aircraft lookup failed', err);
+                }
+
+                // Update live markers using the incremental update function
+                updateLiveMarkers(positions);
+                
+                setLiveStatus(formatOkWithTime(`OK (${positions.length})`), 'ok');
+            } catch (err) {
+                console.warn('Failed to fetch live positions:', err);
+                setLiveStatus('Error', 'error');
+            } finally {
+                isFetchingPositions = false;
+            }
+        }
+        function setLiveStatus(text, state) {
+            const el = document.getElementById('live-fetch-status');
+            if (!el) return;
+            el.textContent = text;
+            el.classList.remove('status-ok', 'status-loading', 'status-error', 'status-success', 'status-warning', 'status-idle');
+            if (state === 'ok') el.classList.add('status-ok');
+            else if (state === 'loading') el.classList.add('status-loading');
+            else if (state === 'error') el.classList.add('status-error');
+            else if (state === 'success') el.classList.add('status-success');
+            else if (state === 'warning') el.classList.add('status-warning');
+            else if (state === 'idle') el.classList.add('status-idle');
+        }
+
+        // Process live position updates from WebSocket
+        function updateLivePositionsFromSocket(data) {
+            try {
+                let positions = (data && Array.isArray(data.aircraft)) ? data.aircraft : (Array.isArray(data) ? data : null);
+
+                if (!positions) {
+                    console.warn('Invalid socket data received:', data);
+                    return;
+                }
+
+                // Apply the same filtering logic as fetchLivePositions
+                const RECENT_MS = 10 * 1000; // 10 seconds - only truly live aircraft
+                const nowTs = Date.now();
+                const positionsByHex = new Map();
+                
+                positions.forEach(p => {
+                    const hx = (p.hex || p.HEX || p.icao || p.icao24 || '').toLowerCase();
+                    const ts = p.timestamp || p.ts || p.time || 0;
+                    if (!hx) return;
+                    if (!positionsByHex.has(hx)) positionsByHex.set(hx, []);
+                    positionsByHex.get(hx).push(Object.assign({}, p, { timestamp: ts }));
+                });
+
+                const filtered = [];
+                for (const [hex, arr] of positionsByHex.entries()) {
+                    // Sort descending by timestamp so arr[0] is newest
+                    arr.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                    const latest = arr[0];
+                    if (!latest) continue;
+                    
+                    // Only apply recency filtering for small time windows (1 hour or less)
+                    const hours = 1; // Always use 1 hour for live positions
+                    if (hours <= 1 && (latest.timestamp || nowTs) < (nowTs - RECENT_MS)) continue;
+
+                    // Seed short trail points from most recent positions
+                    try {
+                        const pts = arr.slice(0, LAST_POSITIONS_COUNT).map(p => [p.lat ?? p.Latitude ?? p.latitude, p.lon ?? p.Longitude ?? p.longitude]).reverse();
+                        if (pts && pts.length) lastPositions.set(hex, pts);
+                    } catch (e) {}
+
+                    filtered.push(latest);
+                }
+
+                positions = filtered;
+
+                // Update the live markers with the new positions
+                updateLiveMarkers(positions);
+                
+                setLiveStatus(formatOkWithTime(`Socket (${positions.length})`), 'success');
+                
+            } catch (e) {
+                console.error('Error processing socket liveUpdate:', e);
+                setLiveStatus('Socket Error', 'error');
+            }
+        }
+
+        // Asynchronous positions processing queue to avoid blocking main loop
+        if (!window._positionsQueue) window._positionsQueue = [];
+        if (!window._processingPositions) window._processingPositions = false;
+
+        function scheduleProcessPositions() {
+            try {
+                if (window._processingPositions) return;
+                window._processingPositions = true;
+                // Use requestIdleCallback where available, else setTimeout
+                const runner = async () => {
+                    try {
+                        let positions;
+                        // Drain queue: take the latest enqueued positions batch and discard older
+                        while (window._positionsQueue.length) positions = window._positionsQueue.pop();
+                        if (positions) await doUpdateLiveMarkers(positions);
+                    } catch (e) { console.warn('processPositions runner error', e); }
+                    window._processingPositions = false;
+                };
+                if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(runner, {timeout:100});
+                else setTimeout(runner, 0);
+            } catch (e) { window._processingPositions = false; }
+        }
+
+        // Lightweight wrapper so callers in this file can invoke updateLiveMarkers and it will be queued
+        function updateLiveMarkers(positions) {
+            try {
+                if (!positions || !positions.length) return;
+                if (!window._positionsQueue) window._positionsQueue = [];
+                window._positionsQueue.push(positions);
+                scheduleProcessPositions();
+            } catch (e) { console.warn('updateLiveMarkers wrapper failed', e); }
+        }
+
+        async function doUpdateLiveMarkers(positions) {
+            try {
+                const now = Date.now();
+                const TIMEOUT_MS = 15 * 1000; // 15 seconds
+
+                // Mark all existing markers as not seen in this update
+                for (const [hex, markerData] of liveMarkers.entries()) {
+                    markerData.seenInUpdate = false;
+                }
+
+                // Process current positions in small async chunks to yield
+                const chunkSize = 200;
+                for (let i = 0; i < positions.length; i += chunkSize) {
+                    const slice = positions.slice(i, i + chunkSize);
+                    for (const p of slice) {
+                        try {
+                            const lat = p.lat ?? p.Latitude ?? p.latitude;
+                            const lon = p.lon ?? p.Longitude ?? p.longitude;
+                            if (typeof lat !== 'number' || typeof lon !== 'number') continue;
+                            const hex = (p.hex || '').toLowerCase();
+
+                            // Calculate vertical rate for color coding
+                            let verticalRate = 0;
+                            try {
+                                const alt = p.alt || p.altitude || p.Alt || p.Altitude || null;
+                                if (alt !== null && typeof alt === 'number') {
+                                    const prevData = verticalRateCache.get(hex);
+                                    if (prevData) {
+                                        const timeDiff = (now - prevData.timestamp) / 1000;
+                                        if (timeDiff > 30 && timeDiff < 300) {
+                                            const altDiff = alt - prevData.altitude;
+                                            verticalRate = (altDiff / timeDiff) * 60;
+                                        }
+                                    }
+                                    verticalRateCache.set(hex, { altitude: alt, timestamp: now });
+                                }
+                            } catch (e) {}
+
+                            const existingMarkerData = liveMarkers.get(hex);
+                            if (existingMarkerData) {
+                                existingMarkerData.marker.setLatLng([lat, lon]);
+                                const prevLastSeen = existingMarkerData.lastSeen;
+                                if (!p.timestamp && prevLastSeen) { try { p.timestamp = prevLastSeen; } catch (e) {} }
+                                existingMarkerData.marker._posData = p;
+                                existingMarkerData.lastSeen = now;
+                                existingMarkerData.seenInUpdate = true;
+
+                                const tooltipHtml = buildHoverTooltipHTML(p);
+                                try { existingMarkerData.marker.getTooltip().setContent(tooltipHtml); } catch (e) {}
+                                try { existingMarkerData.marker.getPopup().setContent(tooltipHtml); } catch (e) {}
+
+                                try {
+                                    const aircraftInfo = { manufacturer: p.manufacturer || p.airline || null, typecode: p.aircraft_type || null };
+                                    if (aircraftInfo.typecode) {
+                                        const track = p.heading || p.track || p.course || 0;
+                                        const rot = track;
+                                        const newIcon = createAircraftLogoIcon(aircraftInfo, rot, 50, verticalRate);
+                                        existingMarkerData.marker.setIcon(newIcon);
+                                    }
+                                } catch (e) {}
+                            } else {
+                                let icon;
+                                const track = p.heading || p.track || p.course || 0;
+                                const rot = track;
+                                try {
+                                    const aircraftInfo = { manufacturer: p.manufacturer || p.airline || null, typecode: p.aircraft_type || null };
+                                    icon = createAircraftLogoIcon(aircraftInfo, rot, 50, verticalRate);
+                                } catch (e) {
+                                    let fallbackColor = '#ff3300';
+                                    if (verticalRate > 500) fallbackColor = '#00ff00';
+                                    else if (verticalRate < -300) fallbackColor = '#ff0000';
+                                    icon = createAircraftIcon(fallbackColor, 50, rot);
+                                }
+
+                                const marker = L.marker([lat, lon], { icon, pane: 'livePane', zIndexOffset: 1000 });
+                                const tooltipHtml = buildHoverTooltipHTML(p);
+                                marker.bindTooltip(tooltipHtml, { direction: 'top', offset: [0, -10], sticky: true });
+                                marker.bindPopup(tooltipHtml);
+
+                                try {
+                                    const v = p.sqk || p.squawk || p.transponder || p.transponder_code || p.squawk_code || null;
+                                    if (v) { p.sqk = v; p.squawk = p.squawk || v; }
+                                    else if (lastSquawk.has(hex)) { const ls = lastSquawk.get(hex); if (ls) { p.sqk = ls; p.squawk = p.squawk || ls; } }
+                                } catch (e) {}
+                                try { lastPositions.set(hex, [[lat, lon]]); } catch (e) {}
+
+                                if (!p.timestamp) p.timestamp = now;
+                                marker._posData = p;
+
+                                liveLayer.addLayer(marker);
+                                liveMarkers.set(hex, { marker, lastSeen: now, seenInUpdate: true });
+                            }
+
+                            // Maintain last positions and trails (same logic as before)
+                            try {
+                                const arr = lastPositions.get(hex) || [];
+                                const last = arr.length ? arr[arr.length - 1] : null;
+                                if (!last || last[0] !== lat || last[1] !== lon) {
+                                    arr.push([lat, lon]);
+                                    if (arr.length > LAST_POSITIONS_COUNT) arr.splice(0, arr.length - LAST_POSITIONS_COUNT);
+                                    lastPositions.set(hex, arr);
+                                }
+
+                                // Update live tail polyline
+                                const pts = (lastPositions.get(hex) || []).slice();
+                                if (pts.length >= 2) {
+                                    if (liveTrails.has(hex)) {
+                                        const tr = liveTrails.get(hex);
+                                        try { tr.setLatLngs(pts); } catch (e) {}
+                                    } else {
+                                        const tr = L.polyline(pts, { color: '#00ffff', weight: 2, opacity: 0.7, pane: 'livePane', interactive: false });
+                                        liveTrails.set(hex, tr);
+                                        liveLayer.addLayer(tr);
+                                    }
+
+                                    // Incrementally update live track group and long track group (append new point)
+                                    try {
+                                        if (liveTrackGroups.has(hex)) {
+                                            const group = liveTrackGroups.get(hex);
+                                            const layers = group.getLayers().filter(l => l instanceof L.Polyline);
+                                            const lastPoly = layers.length ? layers[layers.length - 1] : null;
+                                            const newPoint = [lat, lon];
+                                            const segColor = getVerticalRateColor(verticalRate || 0);
+                                            if (lastPoly) {
+                                                const lastColor = lastPoly.options && lastPoly.options.color ? lastPoly.options.color : null;
+                                                if (lastColor === segColor) {
+                                                    try { lastPoly.addLatLng(newPoint); } catch (e) {}
+                                                } else {
+                                                    try {
+                                                        const lastLatLngs = lastPoly.getLatLngs();
+                                                        const prev = lastLatLngs && lastLatLngs.length ? lastLatLngs[lastLatLngs.length - 1] : null;
+                                                        if (prev) {
+                                                            const poly = L.polyline([prev, newPoint], { color: segColor, weight: 3, opacity: 0.9, pane: 'livePane', interactive: false });
+                                                            group.addLayer(poly);
+                                                            if (!liveTracksLayer.hasLayer(group)) liveTracksLayer.addLayer(group);
+                                                        }
+                                                    } catch (e) {}
+                                                }
+                                            } else {
+                                                const prev = (lastPositions.get(hex) && lastPositions.get(hex).length > 1) ? lastPositions.get(hex)[lastPositions.get(hex).length - 2] : null;
+                                                if (prev) {
+                                                    try {
+                                                        const poly = L.polyline([prev, newPoint], { color: segColor, weight: 3, opacity: 0.9, pane: 'livePane', interactive: false });
+                                                        group.addLayer(poly);
+                                                        if (!liveTracksLayer.hasLayer(group)) liveTracksLayer.addLayer(group);
+                                                        liveTrackGroups.set(hex, group);
+                                                    } catch (e) {}
+                                                }
+                                            }
+                                        }
+
+                                        // Also update any long-track (historical) group by appending if recent
+                                        try {
+                                            if (longTrackGroups.has(hex)) {
+                                                const lg = longTrackGroups.get(hex);
+                                                const layers = lg.getLayers().filter(l => l instanceof L.Polyline);
+                                                const lastPoly = layers.length ? layers[layers.length - 1] : null;
+                                                const newPoint = [lat, lon];
+                                                const segColor = getVerticalRateColor(verticalRate || 0);
+                                                if (lastPoly) {
+                                                    const lastColor = lastPoly.options && lastPoly.options.color ? lastPoly.options.color : null;
+                                                    if (lastColor === segColor) {
+                                                        try { lastPoly.addLatLng(newPoint); } catch (e) {}
+                                                    } else {
+                                                        try {
+                                                            const lastLatLngs = lastPoly.getLatLngs();
+                                                            const prev = lastLatLngs && lastLatLngs.length ? lastLatLngs[lastLatLngs.length - 1] : null;
+                                                            if (prev) {
+                                                                const poly = L.polyline([prev, newPoint], { color: segColor, weight: 3, opacity: 0.95, pane: 'persistentPane', interactive: false });
+                                                                lg.addLayer(poly); if (!longTracksLayer.hasLayer(lg)) longTracksLayer.addLayer(lg);
+                                                            }
+                                                        } catch (e) {}
+                                                    }
+                                                } else {
+                                                    const prev = (lastPositions.get(hex) && lastPositions.get(hex).length > 1) ? lastPositions.get(hex)[lastPositions.get(hex).length - 2] : null;
+                                                    if (prev) {
+                                                        try { const poly = L.polyline([prev, newPoint], { color: segColor, weight: 3, opacity: 0.95, pane: 'persistentPane', interactive: false }); lg.addLayer(poly); if (!longTracksLayer.hasLayer(lg)) longTracksLayer.addLayer(lg); } catch (e) {}
+                                                    }
+                                                }
+                                            }
+                                        } catch (e) {}
+                                    } catch (e) {}
+                                }
+
+                                else {
+                                    // remove any existing short trail if we don't have at least two points
+                                    if (liveTrails.has(hex)) {
+                                        const tr = liveTrails.get(hex);
+                                        try { liveLayer.removeLayer(tr); if (map.hasLayer(tr)) map.removeLayer(tr); } catch (e) {}
+                                        liveTrails.delete(hex);
+                                    }
+                                }
+                            } catch (e) {}
+                        } catch (e) {
+                            console.error('Error updating live markers:', e);
+                        }
+
+                        // Remove markers that weren't seen in this update and have timed out
+                        for (const [hex, markerData] of liveMarkers.entries()) {
+                            if (!markerData.seenInUpdate && (now - markerData.lastSeen > TIMEOUT_MS)) {
+                                try {
+                                    liveLayer.removeLayer(markerData.marker);
+                                    liveMarkers.delete(hex);
+                                    // Remove any short trail polyline for this hex
+                                    if (liveTrails.has(hex)) {
+                                        const tr = liveTrails.get(hex);
+                                        try { liveLayer.removeLayer(tr); if (map.hasLayer(tr)) map.removeLayer(tr); } catch (e) {}
+                                        liveTrails.delete(hex);
+                                    }
+                                } catch (e) {
+                                    console.warn('Failed to remove timed out marker for', hex, e);
+                                }
+                            }
+                        }
+
+                        // Ensure live layer is on the map
+                        if (!window.map.hasLayer(liveLayer)) liveLayer.addTo(window.map);
+                        
+                        try { updateDebugInfo(); } catch(e) {}
+
+                        // Schedule an update for live tracks (debounced) when positions change
+                        try {
+                            if (window._liveTracksUpdateTimer) clearTimeout(window._liveTracksUpdateTimer);
+                            window._liveTracksUpdateTimer = setTimeout(() => {
+                                try { fetchAndDrawLiveTracks(); } catch (e) { console.warn('fetchAndDrawLiveTracks failed', e); }
+                            }, 500);
+                        } catch (e) {}
+                    }
+                }
+            } catch (e) {
+                console.error('Error updating live markers:', e);
+            }
+        }
+
+        function setTrackStatus(text, state) {
+            const el = document.getElementById('track-fetch-status');
+            if (!el) return;
+            el.textContent = text;
+            el.classList.remove('status-ok', 'status-loading', 'status-error', 'status-idle');
+            if (state === 'ok') el.classList.add('status-ok');
+            else if (state === 'loading') el.classList.add('status-loading');
+            else if (state === 'error') el.classList.add('status-error');
+            else if (state === 'idle') el.classList.add('status-idle');
+        }
+
+        // Helper that appends a local timestamp when state is OK
+        function formatOkWithTime(baseText) {
+            try {
+                const now = new Date();
+                return `${baseText} — ${now.toLocaleTimeString()}`;
+            } catch (e) {
+                return baseText;
+            }
+        }
+
+
+
+        // Convert lat/lon distance to degrees (approximation)
+        function nmToDegrees(nm) {
+            // 1 degree latitude ≈ 60 nm
+            return nm / 60;
+        }
+
+        // Compute bearing from lat1,lon1 -> lat2,lon2 in degrees (0-360)
+        function computeBearing(lat1, lon1, lat2, lon2) {
+            try {
+                const toRad = v => v * Math.PI / 180;
+                const toDeg = v => v * 180 / Math.PI;
+                const φ1 = toRad(lat1);
+                const φ2 = toRad(lat2);
+                const Δλ = toRad(lon2 - lon1);
+                const y = Math.sin(Δλ) * Math.cos(φ2);
+                const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+                let θ = Math.atan2(y, x);
+                θ = toDeg(θ);
+                if (θ < 0) θ += 360;
+                return Math.round(θ);
+            } catch (e) { return null; }
+        }
+
+        // Compute central angle (degrees) between two lat/lon points on a sphere
+        function centralAngleDeg(lat1, lon1, lat2, lon2) {
+            const toRad = v => v * Math.PI / 180;
+            const φ1 = toRad(lat1);
+            const φ2 = toRad(lat2);
+            const Δφ = toRad(lat2 - lat1);
+            const Δλ = toRad(lon2 - lon1);
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return c * 180 / Math.PI;
+        }
+
+        // Interpolate an intermediate point on the great-circle between two points
+        // fraction in [0,1]
+        function interpolateGreatCircle(lat1, lon1, lat2, lon2, f) {
+            const toRad = v => v * Math.PI / 180;
+            const toDeg = v => v * 180 / Math.PI;
+            const φ1 = toRad(lat1), λ1 = toRad(lon1);
+            const φ2 = toRad(lat2), λ2 = toRad(lon2);
+
+            const sinφ1 = Math.sin(φ1), cosφ1 = Math.cos(φ1);
+            const sinφ2 = Math.sin(φ2), cosφ2 = Math.cos(φ2);
+
+            // angular distance
+            const Δλ = λ2 - λ1;
+            const cosΔλ = Math.cos(Δλ);
+            const δ = Math.acos(Math.max(-1, Math.min(1, sinφ1 * sinφ2 + cosφ1 * cosφ2 * cosΔλ)));
+            if (δ === 0) return [lat1, lon1];
+            const sinδ = Math.sin(δ);
+            const A = Math.sin((1 - f) * δ) / sinδ;
+            const B = Math.sin(f * δ) / sinδ;
+
+            const x = A * cosφ1 * Math.cos(λ1) + B * cosφ2 * Math.cos(λ2);
+            const y = A * cosφ1 * Math.sin(λ1) + B * cosφ2 * Math.sin(λ2);
+            const z = A * sinφ1 + B * sinφ2;
+
+            const φi = Math.atan2(z, Math.sqrt(x * x + y * y));
+            const λi = Math.atan2(y, x);
+            return [toDeg(φi), toDeg(λi)];
+        }
+
+        // Densify a track (array of {lat,lon,...}) by interpolating intermediate great-circle
+        // points so each segment is at most `maxDeg` degrees of central angle.
+        function densifyTrackPoints(points, maxDeg = 0.25) {
+            if (!Array.isArray(points) || points.length < 2) return (points || []).map(p => [p.lat, p.lon]);
+            const out = [];
+            for (let i = 0; i < points.length - 1; i++) {
+                const a = points[i];
+                const b = points[i+1];
+                if (!a || !b) continue;
+                const lat1 = Number(a.lat), lon1 = Number(a.lon);
+                const lat2 = Number(b.lat), lon2 = Number(b.lon);
+                out.push([lat1, lon1]);
+                const ang = centralAngleDeg(lat1, lon1, lat2, lon2);
+                const steps = Math.max(1, Math.ceil(ang / maxDeg));
+                // add intermediate points (exclude endpoints)
+                for (let s = 1; s < steps; s++) {
+                    const f = s / steps;
+                    try {
+                        const ip = interpolateGreatCircle(lat1, lon1, lat2, lon2, f);
+                        out.push(ip);
+                    } catch (e) {
+                        // fallback: linear interpolation
+                        const ilat = lat1 + (lat2 - lat1) * (s / steps);
+                        const ilon = lon1 + (lon2 - lon1) * (s / steps);
+                        out.push([ilat, ilon]);
+                    }
+                }
+            }
+            // push last point
+            const last = points[points.length - 1];
+            out.push([Number(last.lat), Number(last.lon)]);
+            return out;
+        }
+
+        // Compute maximum angular change between consecutive course segments for a track
+        // points: [{lat,lon,...}, ...] -> returns max delta in degrees
+        function maxTrackAngularChange(points) {
+            try {
+                if (!Array.isArray(points) || points.length < 3) return 0;
+                const bearings = [];
+                for (let i = 0; i < points.length - 1; i++) {
+                    const a = points[i];
+                    const b = points[i+1];
+                    if (a == null || b == null) { bearings.push(null); continue; }
+                    const ba = computeBearing(a.lat, a.lon, b.lat, b.lon);
+                    bearings.push(typeof ba === 'number' ? ba : null);
+                }
+
+                // (great-circle and densify helper functions are defined at top-level)
+                let maxDelta = 0;
+                for (let i = 0; i < bearings.length - 1; i++) {
+                    const b1 = bearings[i];
+                    const b2 = bearings[i+1];
+                    if (b1 == null || b2 == null) continue;
+                    // minimal angular difference
+                    let diff = Math.abs(b2 - b1) % 360;
+                    if (diff > 180) diff = 360 - diff;
+                    if (diff > maxDelta) maxDelta = diff;
+                }
+                return maxDelta;
+            } catch (e) { return 0; }
+        }
+
+        // Compute vertical rate (fpm) for sequential track points when possible
+        function addVerticalRatesToTrackPoints(points) {
+            if (!Array.isArray(points) || points.length < 2) return;
+            const normalizeTs = (v) => {
+                if (v === undefined || v === null) return null;
+                const nv = Number(v);
+                if (!Number.isNaN(nv)) return (nv < 1e11) ? nv * 1000 : nv;
+                const parsed = Date.parse(v);
+                return Number.isNaN(parsed) ? null : parsed;
+            };
+            for (let i = 0; i < points.length; i++) {
+                points[i].vertical_rate = points[i].vertical_rate || 0;
+            }
+            for (let i = 1; i < points.length; i++) {
+                const prev = points[i-1];
+                const cur = points[i];
+                if (!prev || !cur) continue;
+                const a1 = (prev.alt !== undefined) ? Number(prev.alt) : (prev.altitude !== undefined ? Number(prev.altitude) : null);
+                const a2 = (cur.alt !== undefined) ? Number(cur.alt) : (cur.altitude !== undefined ? Number(cur.altitude) : null);
+                if (!Number.isFinite(a1) || !Number.isFinite(a2)) continue;
+                const t1 = normalizeTs(prev.timestamp ?? prev.ts ?? prev.time ?? prev.t);
+                const t2 = normalizeTs(cur.timestamp ?? cur.ts ?? cur.time ?? cur.t);
+                let dtSec = null;
+                if (t1 && t2) dtSec = (t2 - t1) / 1000;
+                if (!dtSec || dtSec <= 0) dtSec = 1; // fallback to 1s if missing
+                const vr = ((a2 - a1) / dtSec) * 60; // feet per minute
+                cur.vertical_rate = vr;
+            }
+        }
+
+        // Get color based on vertical rate (feet per minute)
+        // Returns: 'red' for descending, 'green' for climbing, 'yellow' for level flight
+
+
+        // Get color based on intensity
+        function getColorForIntensity(value, max, mode = 'intensity') {
+            // Get scaling mode from UI
+            const scalingModeElem = document.getElementById('scaling-mode');
+            const scalingMode = scalingModeElem ? scalingModeElem.value : 'linear';
+            let normalized = 0;
+            if (scalingMode === 'log') {
+                normalized = Math.log(value + 1) / Math.log(max + 1);
+            } else if (scalingMode === 'sqrt') {
+                normalized = Math.sqrt(value) / Math.sqrt(max);
+            } else if (scalingMode === 'power') {
+                normalized = Math.pow(value, 1/2.2) / Math.pow(max, 1/2.2);
+            } else {
+                normalized = value / max;
+            }
+            if (mode === 'intensity') {
+                // Blue -> Green -> Yellow -> Red gradient
+                if (normalized < 0.25) {
+                    return `rgb(0, 0, ${Math.floor(255 * (normalized / 0.25))})`;
+                } else if (normalized < 0.5) {
+                    return `rgb(0, ${Math.floor(255 * ((normalized - 0.25) / 0.25))}, 255)`;
+                } else if (normalized < 0.75) {
+                    return `rgb(0, 255, ${Math.floor(255 * (1 - (normalized - 0.5) / 0.25))})`;
+                } else {
+                    return `rgb(${Math.floor(255 * ((normalized - 0.75) / 0.25))}, 255, 0)`;
+                }
+            } else if (mode === 'density') {
+                // Red scale
+                const red = Math.floor(255 * normalized);
+                return `rgb(${red}, 0, 0)`;
+            }
+            return 'rgb(100, 100, 100)';
+        }
+
+        // Function to set time window dropdown and load data
+        function setTimeWindowAndLoad(windowValue) {
+            const select = document.getElementById('time-window');
+            if (select) {
+                // Handle 30m case - set to 1h in dropdown but pass 30m to loadGridData
+                const displayValue = windowValue === '30m' ? '1h' : windowValue;
+                select.value = displayValue;
+                loadGridData(windowValue === '30m' ? 0.5 : null);
+            }
+        }
+
+        async function loadGridData(hoursOverride = null) {
+            try {
+                showLoading(true);
+                const timeWindow = document.getElementById('time-window').value;
+                const startTime = Date.now();
+
+                // Parse URL parameters for configuration from dashboard
+                const urlParams = new URLSearchParams(window.location.search);
+                const sourceParam = urlParams.get('source'); // 'memory' or 'tsdb'
+                const hoursParam = urlParams.get('hours');
+                const gridSizeParam = urlParams.get('gridSizeNm');
+
+                // Map UI window values to the backend hours parameter used by /api/heatmap-data
+                function windowToHours(w) {
+                    if (!w) return 24;
+                    if (w === 'all') return 744; // default to ~31 days for "all"
+                    if (w.endsWith('d')) {
+                        const days = parseInt(w.replace('d',''), 10);
+                        return isNaN(days) ? 24 : days * 24;
+                    }
+                    if (w.endsWith('w')) {
+                        const weeks = parseInt(w.replace('w',''), 10);
+                        return isNaN(weeks) ? 24 : weeks * 7 * 24; // Convert weeks to hours
+                    }
+                    if (w.endsWith('h')) {
+                        const hrs = parseInt(w.replace('h',''), 10);
+                        return isNaN(hrs) ? 24 : hrs;
+                    }
+                    if (w.endsWith('m')) {
+                        const mins = parseInt(w.replace('m',''), 10);
+                        return isNaN(mins) ? 24 : mins / 60;
+                    }
+                    return 24;
+                }
+
+                // Determine hours: use override if provided, then URL param, then UI selection
+                const hours = hoursOverride !== null ? hoursOverride : 
+                             (hoursParam ? parseInt(hoursParam, 10) : windowToHours(timeWindow));
+                
+                // Determine source: use URL param or default to tsdb
+                const source = sourceParam || 'tsdb';
+
+                // Get grid size from UI control, fallback to URL parameter, then default
+                const gridSizeControl = document.getElementById('grid-size');
+                const gridSizeNm = gridSizeControl ? parseFloat(gridSizeControl.value) : 
+                                   (gridSizeParam ? parseFloat(gridSizeParam) : 1.0);
+
+                // Build API URL with parameters
+                const params = new URLSearchParams({
+                    hours: hours.toString(),
+                    source: source,
+                    gridSizeNm: gridSizeNm.toString()
+                });
+                const url = `/api/heatmap-data?${params.toString()}`;
+                console.log(`Loading grid data with URL params: source=${source}, hours=${hours}, gridSizeNm=${gridSizeNm}; fetching ${url}`);
+
+                const response = await fetchWithTimeout(url);
+                if (!response.ok) throw new Error(`API error: ${response.status}`);
+
+                // Accept either an array response or an object { grid: [...] }
+                const payload = await response.json();
+                const gridData = Array.isArray(payload) ? payload : (payload.grid || []);
+                const loadTime = Date.now() - startTime;
+                console.log(`Received ${gridData.length} grid cells from API`);
+
+                let totalPositions = 0;
+                let minLat = Infinity, maxLat = -Infinity;
+                let minLon = Infinity, maxLon = -Infinity;
+                let maxCount = 0;
+
+                gridData.forEach(cell => {
+                    if (cell.count > 0) {
+                        totalPositions += cell.count;
+                        maxCount = Math.max(maxCount, cell.count);
+                        minLat = Math.min(minLat, cell.lat_min);
+                        maxLat = Math.max(maxLat, cell.lat_max);
+                        minLon = Math.min(minLon, cell.lon_min);
+                        maxLon = Math.max(maxLon, cell.lon_max);
+                    }
+                });
+
+                currentData = {
+                    gridCells: gridData,
+                    totalPositions,
+                    maxCount,
+                    bounds: { minLat, maxLat, minLon, maxLon }
+                };
+
+                console.log(`Total positions calculated: ${totalPositions}, Max count: ${maxCount}, Cells with data: ${gridData.filter(c => c.count > 0).length}`);
+
+                // Update grid display
+                updateGridDisplay();
+
+                // Update info panel
+                document.getElementById('cell-count').textContent = gridData.filter(c => c.count > 0).length;
+                document.getElementById('point-count').textContent = totalPositions.toLocaleString();
+                document.getElementById('load-time').textContent = `${loadTime}ms`;
+                document.getElementById('max-density').textContent = maxCount;
+                
+                const latSpan = (maxLat - minLat).toFixed(2);
+                const lonSpan = (maxLon - minLon).toFixed(2);
+                document.getElementById('coverage-area').textContent = 
+                    `${latSpan}° × ${lonSpan}° (${gridData.filter(c => c.count > 0).length} cells)`;
+
+                // Update configuration display
+                document.getElementById('config-source').textContent = source;
+                document.getElementById('config-hours').textContent = hours;
+                document.getElementById('config-grid-size').textContent = gridSizeNm;
+
+                showLoading(false);
+
+            } catch (error) {
+                showLoading(false);
+                showError(`Failed to load grid data: ${error.message}`);
+            }
+        }
+
+        function updateGridDisplay() {
+            if (!currentData || currentData.gridCells.length === 0) return;
+
+            // Clear the existing grid layer's contents rather than recreating it.
+            // If the placeholder gridLayer was registered earlier, reuse it so the layer control stays stable.
+            try {
+                if (!gridLayer) gridLayer = L.layerGroup();
+                gridLayer.clearLayers();
+            } catch (e) {
+                // Fallback behavior: remove then recreate
+                try { if (gridLayer) map.removeLayer(gridLayer); } catch(e) {}
+            }
+
+            const opacity = parseFloat(document.getElementById('opacity').value);
+            const colorMode = document.getElementById('color-mode').value;
+            const showBorders = document.getElementById('show-borders').checked;
+
+            // Create feature group for all grid cells (placed into the dedicated heatmap pane)
+            // Use the existing gridLayer (a LayerGroup) to host rectangles; keeps the same reference for the layers control.
+            try { if (!gridLayer) gridLayer = L.layerGroup(); } catch(e) { gridLayer = L.layerGroup(); }
+
+            currentData.gridCells.forEach(cell => {
+                if (cell.count === 0) return;
+
+                // Create rectangle for 1nm x 1nm grid cell
+                const bounds = [
+                    [cell.lat_min, cell.lon_min],
+                    [cell.lat_max, cell.lon_max]
+                ];
+
+                const color = getColorForIntensity(cell.count, currentData.maxCount, colorMode);
+
+                const rectangle = L.rectangle(bounds, {
+                    pane: 'heatmapPane',
+                    color: showBorders ? '#333' : color,
+                    weight: showBorders ? 1 : 0,
+                    fillColor: color,
+                    fillOpacity: opacity,
+                    className: 'grid-cell'
+                });
+
+                // Add popup with cell info
+                rectangle.bindPopup(`
+                    <strong>Grid Cell</strong><br>
+                    Lat: ${cell.lat_min.toFixed(4)}° to ${cell.lat_max.toFixed(4)}°<br>
+                    Lon: ${cell.lon_min.toFixed(4)}° to ${cell.lon_max.toFixed(4)}°<br>
+                    <strong>Positions: ${cell.count}</strong>
+                `);
+
+                gridLayer.addLayer(rectangle);
+            });
+
+            // We reuse the registered gridLayer: ensure it's added to map if not already
+            try { if (!map.hasLayer(gridLayer)) gridLayer.addTo(map); } catch(e) {}
+
+                // Overlay registration / update completed - ensure tests know overlays are ready.
+                try { window.heatmapOverlaysReady = true; window.dispatchEvent(new Event('heatmap-overlays-ready')); } catch (e) { console.warn('Failed to dispatch heatmap-overlays-ready event', e); }
+
+            // Persist layer visibility changes
+            try {
+                map.on('overlayadd', () => { saveSettings(); });
+                map.on('overlayremove', () => { saveSettings(); });
+                map.on('baselayerchange', () => { saveSettings(); });
+            } catch (e) { console.warn('Failed to register layer change persistence', e); }
+
+            // Live positions are always enabled, so always start them
+            try {
+                if (!liveIntervalId) {
+                    // Start live positions and batch polling
+                    toggleLivePositions();
+                }
+            } catch (e) {
+                console.warn('Auto-start live after grid load failed', e);
+            }
+            // Always do a one-time fetch of live positions so the positions overlay
+            // is populated with the same data as the Live tab (tooltips/enrichment)
+            try {
+                fetchLivePositions();
+            } catch (e) {
+                console.warn('One-time fetch of live positions failed', e);
+            }
+
+            // Fit bounds to data
+            if (currentData.bounds.minLat !== Infinity) {
+                map.fitBounds([
+                    [currentData.bounds.minLat, currentData.bounds.minLon],
+                    [currentData.bounds.maxLat, currentData.bounds.maxLon]
+                ]);
+            }
+            // Re-apply saved overlay settings after overlays have been registered, but only once
+            try {
+                if (!window._heatmapSettingsApplied) {
+                    loadSettings();
+                    window._heatmapSettingsApplied = true;
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        async function resetMap() {
+            try {
+                // Fetch config and receiver location
+                const [configResponse, receiverResponse] = await Promise.all([
+                    fetch('/api/config'),
+                    fetch('/api/receiver-location')
+                ]);
+
+                const config = await configResponse.json();
+                const receiver = await receiverResponse.json();
+
+                // Determine map center (same logic as initialization)
+                let centerLat, centerLon, zoomLevel;
+
+                if (config.heatmap && config.heatmap.mapCenter && config.heatmap.mapCenter.enabled) {
+                    // Use config override
+                    centerLat = config.heatmap.mapCenter.lat;
+                    centerLon = config.heatmap.mapCenter.lon;
+                    zoomLevel = config.heatmap.mapCenter.zoom;
+                } else if (receiver.available) {
+                    // Use receiver location
+                    centerLat = receiver.lat;
+                    centerLon = receiver.lon;
+                    zoomLevel = 8;
+                } else {
+                    // Fallback to continental US
+                    centerLat = 39.5;
+                    centerLon = -98.0;
+                    zoomLevel = 4;
+                }
+
+                map.setView([centerLat, centerLon], zoomLevel);
+            } catch (error) {
+                console.error('Failed to reset map:', error);
+                // Fallback
+                map.setView([39.5, -98.0], 4);
+            }
+        }
+
+        function toggleLegend() {
+            const legend = document.getElementById('legend');
+            legend.style.display = legend.style.display === 'none' ? 'block' : 'none';
+        }
+
+
+        // Load airline mapping for logo lookup
+        loadAirlineMapping();
+    
+
