@@ -5,13 +5,231 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Live Moving Map — Refactor (Test Page)</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <style>html,body,#map{height:100%;margin:0;padding:0}</style>
+  <style>
+    html,body,#map{height:100%;margin:0;padding:0}
+    #refactor-controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 10000;
+      background: rgba(255,255,255,0.96);
+      padding: 10px 12px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+      max-width: 320px;
+      color: #1e1e1e;
+    }
+    #refactor-controls button,
+    #refactor-controls select,
+    #refactor-controls input[type="number"] {
+      font-size: 12px;
+    }
+    #refactor-controls input[type="number"],
+    #refactor-controls select { width: 100%; box-sizing: border-box; }
+    #refactor-controls .control-row { margin-top: 6px; display:flex; gap:6px; flex-wrap:wrap; }
+    #refactor-controls .control-row:first-child { margin-top: 0; }
+    #refactor-controls .control-section { margin-top: 8px; padding-top: 8px; border-top: 1px solid #e0e0e0; }
+    #refactor-controls .section-title { font-weight: bold; margin-bottom: 4px; }
+    #refactor-controls .overlay-list { max-height: 120px; overflow-y: auto; border: 1px solid #ddd; padding: 4px; border-radius: 4px; }
+    #refactor-controls .overlay-row { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+    #refactor-controls .overlay-row:last-child { margin-bottom:0; }
+    #refactor-controls .status-line { font-family: 'Courier New', monospace; font-size: 11px; color:#333; }
+  </style>
 </head>
 <body>
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <div id="refactor-controls" aria-hidden="false">
+    <div class="control-row">
+      <button id="ref-start">Start Polling</button>
+      <button id="ref-stop">Stop Polling</button>
+      <button id="ref-fetch-tracks" title="Fetch tracks immediately">Fetch Tracks</button>
+    </div>
+    <div class="control-row">
+      <label for="ref-interval">Interval (ms):</label>
+      <input id="ref-interval" type="number" value="1000" min="100" step="100" aria-label="Polling interval in milliseconds">
+    </div>
+    <div class="control-row">
+      <label><input id="ref-show-end" type="checkbox" checked> Show track endpoints</label>
+    </div>
+    <div class="control-row">
+      <label><input id="ref-append-persistent" type="checkbox" checked> Append live segments to persisted tracks</label>
+    </div>
+    <div class="control-row">
+      <label for="ref-marker-ttl">Marker TTL (s):</label>
+      <input id="ref-marker-ttl" type="number" value="30" min="1" step="1" aria-label="Marker TTL in seconds">
+    </div>
+    <div class="control-section">
+      <div class="section-title">Base Map</div>
+      <select id="ref-base-layer" aria-label="Base map selector"></select>
+    </div>
+    <div class="control-section">
+      <div class="section-title">Overlays</div>
+      <div id="ref-overlays" class="overlay-list" aria-live="polite">Loading...</div>
+    </div>
+    <div class="control-section">
+      <div class="section-title">Status</div>
+      <div class="status-line" id="ref-status">idle</div>
+    </div>
+  </div>
+  <script src="http://localhost:3003/socket.io/socket.io.js" onerror="console.error('Failed to load socket.io client for refactor page')"></script>
   <script type="module" src="/js/live-moving-map-refactor.js"></script>
+  <script>
+    (function(){
+      const startBtn = document.getElementById('ref-start');
+      const stopBtn = document.getElementById('ref-stop');
+      const fetchTracksBtn = document.getElementById('ref-fetch-tracks');
+      const intervalInput = document.getElementById('ref-interval');
+      const showEndpoints = document.getElementById('ref-show-end');
+      const baseSelect = document.getElementById('ref-base-layer');
+      const overlayContainer = document.getElementById('ref-overlays');
+      const statusLine = document.getElementById('ref-status');
+
+      function setStatus(message){ if (statusLine) statusLine.textContent = message; }
+      function getInterval(){ return Math.max(100, Number(intervalInput && intervalInput.value) || 1000); }
+
+      function applyBaseLayer(label){
+        const mapRef = window.refactorMap || window.map;
+        if (!mapRef || !window.baseLayers) return;
+        Object.entries(window.baseLayers).forEach(([name, layer]) => {
+          if (!layer) return;
+          const hasLayer = mapRef.hasLayer && mapRef.hasLayer(layer);
+          if (name === label) {
+            if (!hasLayer && layer.addTo) layer.addTo(mapRef);
+          } else if (hasLayer && mapRef.removeLayer) {
+            mapRef.removeLayer(layer);
+          }
+        });
+      }
+
+      function refreshBaseOptions(){
+        const mapRef = window.refactorMap || window.map;
+        if (!baseSelect || !mapRef || !window.baseLayers) return;
+        baseSelect.innerHTML = '';
+        Object.keys(window.baseLayers).forEach(label => {
+          const option = document.createElement('option');
+          option.value = label;
+          option.textContent = label;
+          baseSelect.appendChild(option);
+        });
+        const active = Object.entries(window.baseLayers).find(([label, layer]) => mapRef.hasLayer && mapRef.hasLayer(layer));
+        if (active) baseSelect.value = active[0];
+        baseSelect.onchange = () => { applyBaseLayer(baseSelect.value); setStatus('Base layer: ' + baseSelect.value); };
+      }
+
+      function refreshOverlayList(){
+        const mapRef = window.refactorMap || window.map;
+        if (!overlayContainer || !mapRef || !window.overlayLayers) return;
+        overlayContainer.innerHTML = '';
+        Object.entries(window.overlayLayers).forEach(([label, layer]) => {
+          const id = 'overlay-' + label.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+          const row = document.createElement('label');
+          row.className = 'overlay-row';
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.id = id;
+          cb.checked = mapRef.hasLayer && mapRef.hasLayer(layer);
+          cb.addEventListener('change', () => {
+            try {
+              if (cb.checked) { if (layer.addTo) layer.addTo(mapRef); else mapRef.addLayer(layer); }
+              else mapRef.removeLayer(layer);
+              setStatus(`${cb.checked ? 'Enabled' : 'Disabled'} overlay: ${label}`);
+              if (cb.checked && /Live Tracks/i.test(label) && window.fetchAndDrawLiveTracks) {
+                try { window.fetchAndDrawLiveTracks(); } catch (err) { console.warn('Track fetch failed', err); }
+              }
+            } catch (err) { console.warn('Overlay toggle failed', err); }
+          });
+          const span = document.createElement('span');
+          span.textContent = label;
+          row.appendChild(cb);
+          row.appendChild(span);
+          overlayContainer.appendChild(row);
+        });
+        if (!overlayContainer.children.length) overlayContainer.textContent = 'No overlays registered yet.';
+      }
+
+      function wireCoreControls(){
+        if (startBtn) {
+          startBtn.addEventListener('click', () => {
+            const interval = getInterval();
+            if (window._refactor_startPositionPolling) {
+              window._refactor_startPositionPolling(interval);
+              setStatus('Polling @ ' + interval + 'ms');
+            } else {
+              setStatus('startPositionPolling unavailable');
+            }
+          });
+        }
+        if (stopBtn) {
+          stopBtn.addEventListener('click', () => {
+            if (window._refactor_stopPositionPolling) {
+              window._refactor_stopPositionPolling();
+              setStatus('Polling stopped');
+            }
+          });
+        }
+        if (fetchTracksBtn) {
+          fetchTracksBtn.addEventListener('click', () => {
+            if (window.fetchAndDrawLiveTracks) {
+              window.fetchAndDrawLiveTracks();
+              setStatus('Track fetch queued');
+            } else {
+              setStatus('Track helper unavailable');
+            }
+          });
+        }
+        if (showEndpoints) {
+          showEndpoints.addEventListener('change', () => {
+            window._refactor_show_track_endpoints = !!showEndpoints.checked;
+            setStatus('Track endpoints ' + (showEndpoints.checked ? 'enabled' : 'disabled'));
+          });
+        }
+        // append-to-persistent toggle
+        try {
+          const appendChk = document.getElementById('ref-append-persistent');
+          if (appendChk) {
+            window._refactor_appendLiveToPersistent = (appendChk.checked === undefined) ? true : !!appendChk.checked;
+            appendChk.addEventListener('change', () => {
+              window._refactor_appendLiveToPersistent = !!appendChk.checked;
+              setStatus('Append live→persistent ' + (appendChk.checked ? 'enabled' : 'disabled'));
+            });
+          }
+        } catch (e) {}
+        // marker TTL control (seconds -> ms)
+        try {
+          const ttlInput = document.getElementById('ref-marker-ttl');
+          if (ttlInput) {
+            const cur = Number(window._refactor_markerTtlMs || 30000);
+            ttlInput.value = Math.max(1, Math.round(cur/1000));
+            window._refactor_markerTtlMs = cur;
+            ttlInput.addEventListener('change', () => {
+              const v = Math.max(1, Number(ttlInput.value) || 30);
+              window._refactor_markerTtlMs = v * 1000;
+              setStatus('Marker TTL ' + v + 's');
+            });
+          }
+        } catch (e) {}
+      }
+
+      function waitForGlobals(attempts){
+        const ready = (window.refactorMap || window.map) && window.baseLayers && window.overlayLayers;
+        if (ready) {
+          wireCoreControls();
+          refreshBaseOptions();
+          refreshOverlayList();
+          setStatus('Ready');
+          return;
+        }
+        if (attempts > 50) { setStatus('Waiting for map globals...'); return; }
+        setTimeout(() => waitForGlobals(attempts + 1), 200);
+      }
+
+      waitForGlobals(0);
+    })();
+  </script>
 
   <!--
     NOTES:
